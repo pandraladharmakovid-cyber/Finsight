@@ -7,7 +7,6 @@ import {
 } from 'react-router-dom';
 
 import Shell from './components/layout/Shell.jsx';
-import AuthGate from './components/AuthGate.jsx';
 import { PageLoader } from './components/ui/States.jsx';
 
 /* Pages are code-split so the first paint stays fast. */
@@ -82,31 +81,27 @@ class ErrorBoundary extends Component {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthGate>
-        {({ onLogout }) => (
-          <BrowserRouter>
-            <Shell onLogout={onLogout}>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/transactions" element={<Transactions />} />
-                  <Route path="/accounts" element={<Accounts />} />
-                  <Route path="/categories" element={<Categories />} />
-                  <Route path="/budgets" element={<Budgets />} />
-                  <Route path="/savings" element={<Savings />} />
-                  <Route path="/debts" element={<Debts />} />
-                  <Route path="/recurring" element={<Recurring />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/audit" element={<AuditLog />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                </Routes>
-              </Suspense>
-            </Shell>
-          </BrowserRouter>
-        )}
-      </AuthGate>
+      <BrowserRouter>
+        <Shell>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/transactions" element={<Transactions />} />
+              <Route path="/accounts" element={<Accounts />} />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/budgets" element={<Budgets />} />
+              <Route path="/savings" element={<Savings />} />
+              <Route path="/debts" element={<Debts />} />
+              <Route path="/recurring" element={<Recurring />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/audit" element={<AuditLog />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </Suspense>
+        </Shell>
+      </BrowserRouter>
     </ErrorBoundary>
   );
 }

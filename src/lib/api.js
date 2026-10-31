@@ -74,11 +74,6 @@ export async function request(path, options = {}) {
   }
 
   const finalHeaders = { Accept: 'application/json', ...headers };
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) {
-    // Required by the API for writes; cross-origin browsers cannot set this
-    // header without an allowed CORS preflight.
-    finalHeaders['X-FinSight-Request'] = '1';
-  }
   let payload = body;
 
   if (
@@ -113,9 +108,6 @@ export async function request(path, options = {}) {
     }
 
     if (!response.ok) {
-      if (response.status === 401 && !String(path).startsWith('/auth/')) {
-        window.dispatchEvent(new Event('finsight:auth-required'));
-      }
       throw new ApiError(
         messageFrom(data, `Request failed (${response.status})`),
         response.status,
@@ -154,10 +146,6 @@ export const del = (path, options) =>
 
 export const api = {
   userId: USER_ID,
-
-  session: () => get('/auth/session'),
-  login: (password) => post('/auth/login', { password }),
-  logout: () => post('/auth/logout', {}),
 
   health: () => get('/health'),
   meta: () => get('/meta'),
