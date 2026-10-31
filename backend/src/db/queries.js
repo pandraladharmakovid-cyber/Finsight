@@ -22,6 +22,65 @@ const VIEWS = Object.freeze({
   userFinancialSummary: 'finance.user_financial_summary',
 });
 
+export const ACCOUNT_TYPES = Object.freeze([
+  'BANK',
+  'CASH',
+  'CREDIT_CARD',
+  'WALLET',
+  'INVESTMENT',
+]);
+
+const ACCOUNT_TYPE_ALIASES = Object.freeze({
+  CHECKING: 'BANK',
+  SAVINGS: 'BANK',
+  SAVING: 'BANK',
+  CURRENT: 'BANK',
+  BANK: 'BANK',
+  CASH: 'CASH',
+  CREDIT: 'CREDIT_CARD',
+  CREDITCARD: 'CREDIT_CARD',
+  CREDIT_CARD: 'CREDIT_CARD',
+  CARD: 'CREDIT_CARD',
+  WALLET: 'WALLET',
+  UPI: 'WALLET',
+  INVESTMENT: 'INVESTMENT',
+  INVEST: 'INVESTMENT',
+  STOCKS: 'INVESTMENT',
+});
+
+export function normalizeAccountType(value) {
+  const key = String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+  return ACCOUNT_TYPE_ALIASES[key] ?? 'BANK';
+}
+
+export function readBoolean(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    const normalised = String(value).trim().toLowerCase();
+
+    if (['true', '1', 'yes', 'on'].includes(normalised)) {
+      return true;
+    }
+
+    if (['false', '0', 'no', 'off'].includes(normalised)) {
+      return false;
+    }
+  }
+
+  return undefined;
+}
+
 export async function query(text, values = []) {
   return pool.query(text, values);
 }
@@ -56,6 +115,31 @@ export async function getUserByEmail(email) {
 
 export async function getUsers() {
   return queryRows(`SELECT * FROM ${TABLES.users} ORDER BY user_id`);
+}
+
+export async function updateUser(userId, data) {
+  return queryOne(
+    `
+      UPDATE ${TABLES.users}
+      SET full_name = COALESCE($1, full_name),
+          email = COALESCE($2, email),
+          phone = COALESCE($3, phone),
+          monthly_income = COALESCE($4, monthly_income)
+      WHERE user_id = $5
+      RETURNING *
+    `,
+    [
+      data.full_name ?? data.fullName ?? data.name ?? null,
+      data.email ?? null,
+      data.phone ?? null,
+      data.monthly_income !== undefined
+        ? Math.max(0, Number(data.monthly_income) || 0)
+        : data.monthlyIncome !== undefined
+          ? Math.max(0, Number(data.monthlyIncome) || 0)
+          : null,
+      userId,
+    ],
+  );
 }
 
 /* ============================================================
@@ -110,10 +194,10 @@ export async function createAccount(userId, data) {
     [
       userId,
       account_name ?? accountName ?? 'New Account',
-      account_type ?? accountType ?? 'Checking',
+      normalizeAccountType(account_type ?? accountType),
       Number(balance) || 0,
       currency,
-      Boolean(is_active),
+      readBoolean(is_active, data.isActive) ?? true,
     ],
   );
 }
@@ -126,7 +210,8 @@ export async function updateAccount(accountId, userId, data) {
   const type = data.account_type ?? data.accountType ?? existing.account_type;
   const balance = data.balance !== undefined ? Number(data.balance) : Number(existing.balance);
   const currency = data.currency ?? existing.currency ?? 'INR';
-  const isActive = data.is_active !== undefined ? Boolean(data.is_active) : existing.is_active;
+  const isActive =
+    readBoolean(data.is_active, data.isActive, data.active) ?? existing.is_active;
 
   return queryOne(
     `
@@ -165,15 +250,36 @@ export async function getCategoriesByType(categoryType) {
   );
 }
 
-export async function createCategory(data) {
-  const { category_name, categoryName, category_type, categoryType } = data;
+export async function createCategory(data, userId = null) {
+  const name = String(
+    data.category_name ?? data.categoryName ?? data.name ?? '',
+  ).trim();
+
+  const type = String(
+    data.category_type ?? data.categoryType ?? data.type ?? 'EXPENSE',
+  ).toUpperCase();
+
+  if (!name) {
+    const error = new Error('Category name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const owner =
+    Number(userId ?? data.user_id ?? data.userId) || 1;
+
   return queryOne(
     `
-      INSERT INTO ${TABLES.categories} (category_name, category_type)
-      VALUES ($1, $2)
+      INSERT INTO ${TABLES.categories} (user_id, category_name, category_type, description)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
     `,
-    [category_name ?? categoryName, String(category_type ?? categoryType ?? 'EXPENSE').toUpperCase()],
+    [
+      owner,
+      name,
+      type === 'INCOME' ? 'INCOME' : 'EXPENSE',
+      data.description ?? null,
+    ],
   );
 }
 
@@ -347,10 +453,27 @@ export async function createTransaction(userId, data) {
       accountId = firstAcc.rows[0]?.account_id ?? null;
     }
 
+    // Verify the account really belongs to this user (fail fast, cleanly).
+    if (accountId) {
+      const owned = await client.query(
+        `SELECT account_id FROM ${TABLES.accounts}
+         WHERE account_id = $1 AND user_id = $2 LIMIT 1`,
+        [accountId, userId],
+      );
+
+      if (!owned.rows[0]) {
+        const error = new Error(
+          `Account ${accountId} does not belong to user ${userId}.`,
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
     if (!accountId) {
       const newAcc = await client.query(
         `INSERT INTO ${TABLES.accounts} (user_id, account_name, account_type, balance, currency, is_active)
-         VALUES ($1, $2, 'CHECKING', 0, 'INR', TRUE) RETURNING account_id`,
+         VALUES ($1, $2, 'BANK', 0, 'INR', TRUE) RETURNING account_id`,
         [userId, accountNameInput || 'Primary Account'],
       );
       accountId = newAcc.rows[0].account_id;
@@ -371,14 +494,45 @@ export async function createTransaction(userId, data) {
         categoryId = catByName.rows[0].category_id;
       } else {
         const newCat = await client.query(
-          `INSERT INTO ${TABLES.categories} (category_name, category_type) VALUES ($1, $2) RETURNING category_id`,
-          [String(categoryNameInput).trim(), rawType === 'INCOME' ? 'INCOME' : 'EXPENSE'],
+          `INSERT INTO ${TABLES.categories} (user_id, category_name, category_type)
+           VALUES ($1, $2, $3) RETURNING category_id`,
+          [userId, String(categoryNameInput).trim(), rawType === 'INCOME' ? 'INCOME' : 'EXPENSE'],
         );
         categoryId = newCat.rows[0]?.category_id ?? null;
       }
     }
 
+    // transactions.category_id is NOT NULL — fall back to a sensible category
+    if (!categoryId) {
+      const fallbackType = rawType === 'INCOME' ? 'INCOME' : 'EXPENSE';
+
+      const fallback = await client.query(
+        `SELECT category_id FROM ${TABLES.categories}
+         WHERE user_id = $1 AND category_type = $2
+         ORDER BY category_id LIMIT 1`,
+        [userId, fallbackType],
+      );
+
+      if (fallback.rows[0]) {
+        categoryId = fallback.rows[0].category_id;
+      } else {
+        const created = await client.query(
+          `INSERT INTO ${TABLES.categories} (user_id, category_name, category_type)
+           VALUES ($1, $2, $3) RETURNING category_id`,
+          [userId, rawType === 'INCOME' ? 'General Income' : 'General Expense', fallbackType],
+        );
+        categoryId = created.rows[0].category_id;
+      }
+    }
+
     const amount = Math.abs(Number(data.amount) || 0);
+
+    if (!(amount > 0)) {
+      const error = new Error('Amount must be greater than zero.');
+      error.statusCode = 400;
+      throw error;
+    }
+
     const description = data.description ?? data.merchant ?? data.notes ?? 'Transaction';
     const txDate =
       data.transaction_date ??
@@ -398,12 +552,11 @@ export async function createTransaction(userId, data) {
 
     const created = insertResult.rows[0];
 
-    const delta = rawType === 'INCOME' ? amount : -amount;
-    await client.query(
-      `UPDATE ${TABLES.accounts} SET balance = COALESCE(balance, 0) + $1 WHERE account_id = $2`,
-      [delta, accountId],
-    );
-
+    /*
+     * Account balances are maintained by the database trigger
+     * `trg_update_account_balance`. Mutating the balance here as well
+     * double-counted every transaction, so it is intentionally omitted.
+     */
     await client.query('COMMIT');
     return await getTransactionById(created.transaction_id, userId);
   } catch (err) {
@@ -481,13 +634,7 @@ export async function deleteTransaction(transactionId, userId) {
       [transactionId],
     );
 
-    const amt = Math.abs(Number(existing.amount) || 0);
-    const reverseDelta = String(existing.transaction_type).toUpperCase() === 'INCOME' ? -amt : amt;
-    await client.query(
-      `UPDATE ${TABLES.accounts} SET balance = COALESCE(balance, 0) + $1 WHERE account_id = $2`,
-      [reverseDelta, existing.account_id],
-    );
-
+    // Balances are restored by the database trigger on DELETE.
     await client.query('COMMIT');
     return existing;
   } catch (err) {
@@ -543,21 +690,37 @@ export async function createBudget(userId, data) {
       categoryId = cat.category_id;
     } else {
       const createdCat = await queryOne(
-        `INSERT INTO ${TABLES.categories} (category_name, category_type) VALUES ($1, 'EXPENSE') RETURNING category_id`,
-        [String(categoryNameInput).trim()],
+        `INSERT INTO ${TABLES.categories} (user_id, category_name, category_type)
+         VALUES ($1, $2, 'EXPENSE') RETURNING category_id`,
+        [userId, String(categoryNameInput).trim()],
       );
       categoryId = createdCat?.category_id ?? null;
     }
   }
 
-  const amountLimit = Number(data.amount_limit ?? data.amountLimit ?? data.amount ?? data.budget_amount ?? 0);
+  const amountLimit = Math.abs(
+    Number(
+      data.budget_amount ??
+        data.budgetAmount ??
+        data.amount_limit ??
+        data.amountLimit ??
+        data.amount ??
+        0,
+    ) || 0,
+  );
+
+  if (!(amountLimit > 0)) {
+    const error = new Error('Budget amount must be greater than zero.');
+    error.statusCode = 400;
+    throw error;
+  }
   const startDate = data.start_date ?? data.startDate ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
   const endDate = data.end_date ?? data.endDate ?? new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0];
 
   return queryOne(
     `
       INSERT INTO ${TABLES.budgets}
-        (user_id, category_id, amount_limit, start_date, end_date)
+        (user_id, category_id, budget_amount, start_date, end_date)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `,
@@ -570,7 +733,13 @@ export async function updateBudget(budgetId, userId, data) {
   if (!existing) return null;
 
   const categoryId = data.category_id ?? data.categoryId ?? existing.category_id;
-  const amountLimit = data.amount_limit ?? data.amountLimit ?? data.amount ?? existing.amount_limit;
+  const amountLimit =
+    data.budget_amount ??
+    data.budgetAmount ??
+    data.amount_limit ??
+    data.amountLimit ??
+    data.amount ??
+    existing.budget_amount;
   const startDate = data.start_date ?? data.startDate ?? existing.start_date;
   const endDate = data.end_date ?? data.endDate ?? existing.end_date;
 
@@ -578,7 +747,7 @@ export async function updateBudget(budgetId, userId, data) {
     `
       UPDATE ${TABLES.budgets}
       SET category_id = $1,
-          amount_limit = $2,
+          budget_amount = $2,
           start_date = $3,
           end_date = $4
       WHERE budget_id = $5 AND user_id = $6
@@ -622,19 +791,50 @@ export async function getSavingsGoalById(goalId, userId = null) {
 }
 
 export async function createSavingsGoal(userId, data) {
-  const goalName = data.goal_name ?? data.goalName ?? data.name ?? 'New Goal';
-  const targetAmount = Number(data.target_amount ?? data.targetAmount ?? 0);
-  const currentAmount = Number(data.current_amount ?? data.currentAmount ?? 0);
+  const goalName = String(
+    data.goal_name ?? data.goalName ?? data.name ?? '',
+  ).trim();
+
+  if (!goalName) {
+    const error = new Error('Goal name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const targetAmount = Math.abs(
+    Number(data.target_amount ?? data.targetAmount ?? data.amount ?? 0),
+  );
+
+  if (!(targetAmount > 0)) {
+    const error = new Error('Target amount must be greater than zero.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // DB invariant: current_amount <= target_amount
+  const currentAmount = Math.min(
+    Math.abs(Number(data.current_amount ?? data.currentAmount ?? 0) || 0),
+    targetAmount,
+  );
+
   const targetDate = data.target_date ?? data.targetDate ?? data.deadline ?? null;
+
+  const rawStatus = String(
+    data.status ?? data.goal_status ?? 'ACTIVE',
+  ).toUpperCase();
+
+  const status = ['ACTIVE', 'COMPLETED', 'PAUSED'].includes(rawStatus)
+    ? rawStatus
+    : 'ACTIVE';
 
   return queryOne(
     `
       INSERT INTO ${TABLES.savingsGoals}
-        (user_id, goal_name, target_amount, current_amount, target_date)
-      VALUES ($1, $2, $3, $4, $5)
+        (user_id, goal_name, target_amount, current_amount, target_date, status)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `,
-    [userId, goalName, targetAmount, currentAmount, targetDate],
+    [userId, goalName, targetAmount, currentAmount, targetDate, status],
   );
 }
 
@@ -642,10 +842,33 @@ export async function updateSavingsGoal(goalId, userId, data) {
   const existing = await getSavingsGoalById(goalId, userId);
   if (!existing) return null;
 
-  const goalName = data.goal_name ?? data.goalName ?? data.name ?? existing.goal_name;
-  const targetAmount = data.target_amount ?? data.targetAmount ?? existing.target_amount;
-  const currentAmount = data.current_amount ?? data.currentAmount ?? existing.current_amount;
-  const targetDate = data.target_date ?? data.targetDate ?? existing.target_date;
+  const goalName =
+    data.goal_name ?? data.goalName ?? data.name ?? existing.goal_name;
+
+  const targetAmount = Math.abs(
+    Number(
+      data.target_amount ?? data.targetAmount ?? existing.target_amount,
+    ),
+  );
+
+  let currentAmount = Math.abs(
+    Number(
+      data.current_amount ?? data.currentAmount ?? existing.current_amount,
+    ),
+  );
+
+  currentAmount = Math.min(currentAmount, targetAmount);
+
+  const targetDate =
+    data.target_date ?? data.targetDate ?? existing.target_date;
+
+  const rawStatus = String(
+    data.status ?? data.goal_status ?? existing.status ?? 'ACTIVE',
+  ).toUpperCase();
+
+  const status = ['ACTIVE', 'COMPLETED', 'PAUSED'].includes(rawStatus)
+    ? rawStatus
+    : 'ACTIVE';
 
   return queryOne(
     `
@@ -653,11 +876,12 @@ export async function updateSavingsGoal(goalId, userId, data) {
       SET goal_name = $1,
           target_amount = $2,
           current_amount = $3,
-          target_date = $4
-      WHERE goal_id = $5 AND user_id = $6
+          target_date = $4,
+          status = $5
+      WHERE goal_id = $6 AND user_id = $7
       RETURNING *
     `,
-    [goalName, Number(targetAmount), Number(currentAmount), targetDate, goalId, userId],
+    [goalName, targetAmount, currentAmount, targetDate, status, goalId, userId],
   );
 }
 
@@ -695,21 +919,84 @@ export async function getDebtById(debtId, userId = null) {
 }
 
 export async function createDebt(userId, data) {
-  const debtName = data.debt_name ?? data.debtName ?? data.lender_name ?? data.name ?? 'Debt';
-  const totalAmount = Number(data.total_amount ?? data.totalAmount ?? data.principal_amount ?? data.remaining_balance ?? 0);
-  const remainingAmount = Number(data.remaining_amount ?? data.remainingAmount ?? data.remaining_balance ?? totalAmount);
-  const interestRate = Number(data.interest_rate ?? data.interestRate ?? 0);
-  const minimumPayment = Number(data.minimum_payment ?? data.minimumPayment ?? 0);
+  const debtName = String(
+    data.debt_name ?? data.debtName ?? data.name ?? '',
+  ).trim();
+
+  if (!debtName) {
+    const error = new Error('Debt name is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const principalAmount = Math.abs(
+    Number(
+      data.principal_amount ??
+        data.principalAmount ??
+        data.total_amount ??
+        data.totalAmount ??
+        data.remaining_amount ??
+        data.remainingAmount ??
+        data.remaining_balance ??
+        0,
+    ),
+  );
+
+  if (!(principalAmount > 0)) {
+    const error = new Error('Principal amount must be greater than zero.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let remainingAmount = Math.abs(
+    Number(
+      data.remaining_amount ??
+        data.remainingAmount ??
+        data.remaining_balance ??
+        principalAmount,
+    ),
+  );
+
+  // DB invariant: remaining_amount <= principal_amount
+  remainingAmount = Math.min(remainingAmount, principalAmount);
+
+  const interestRate = Math.max(
+    0,
+    Number(data.interest_rate ?? data.interestRate ?? 0) || 0,
+  );
+
+  const minimumPayment = Math.max(
+    0,
+    Number(data.minimum_payment ?? data.minimumPayment ?? 0) || 0,
+  );
+
   const dueDate = data.due_date ?? data.dueDate ?? null;
+
+  const status = ['ACTIVE', 'PAID', 'OVERDUE'].includes(
+    String(data.debt_status ?? data.debtStatus ?? data.status ?? 'ACTIVE').toUpperCase(),
+  )
+    ? String(data.debt_status ?? data.debtStatus ?? data.status ?? 'ACTIVE').toUpperCase()
+    : 'ACTIVE';
 
   return queryOne(
     `
       INSERT INTO ${TABLES.debts}
-        (user_id, debt_name, total_amount, remaining_amount, interest_rate, minimum_payment, due_date)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+        (user_id, debt_name, lender, principal_amount, remaining_amount,
+         interest_rate, minimum_payment, due_date, debt_status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `,
-    [userId, debtName, totalAmount, remainingAmount, interestRate, minimumPayment, dueDate],
+    [
+      userId,
+      debtName,
+      data.lender ?? data.lender_name ?? data.bank ?? 'Unknown Lender',
+      principalAmount,
+      remainingAmount,
+      interestRate,
+      minimumPayment,
+      dueDate,
+      status,
+    ],
   );
 }
 
@@ -717,26 +1004,81 @@ export async function updateDebt(debtId, userId, data) {
   const existing = await getDebtById(debtId, userId);
   if (!existing) return null;
 
-  const debtName = data.debt_name ?? data.debtName ?? existing.debt_name;
-  const totalAmount = data.total_amount ?? data.totalAmount ?? existing.total_amount;
-  const remainingAmount = data.remaining_amount ?? data.remainingAmount ?? existing.remaining_amount;
-  const interestRate = data.interest_rate ?? data.interestRate ?? existing.interest_rate;
-  const minimumPayment = data.minimum_payment ?? data.minimumPayment ?? existing.minimum_payment;
+  const debtName =
+    data.debt_name ?? data.debtName ?? data.name ?? existing.debt_name;
+
+  const lender = data.lender ?? data.lender_name ?? existing.lender;
+
+  const principalAmount = Math.abs(
+    Number(
+      data.principal_amount ??
+        data.principalAmount ??
+        data.total_amount ??
+        data.totalAmount ??
+        existing.principal_amount,
+    ),
+  );
+
+  let remainingAmount = Math.abs(
+    Number(
+      data.remaining_amount ??
+        data.remainingAmount ??
+        existing.remaining_amount,
+    ),
+  );
+
+  remainingAmount = Math.min(remainingAmount, principalAmount);
+
+  const interestRate = Math.max(
+    0,
+    Number(data.interest_rate ?? data.interestRate ?? existing.interest_rate) || 0,
+  );
+
+  const minimumPayment = Math.max(
+    0,
+    Number(
+      data.minimum_payment ??
+        data.minimumPayment ??
+        existing.minimum_payment,
+    ) || 0,
+  );
+
   const dueDate = data.due_date ?? data.dueDate ?? existing.due_date;
+
+  const rawStatus = String(
+    data.debt_status ?? data.debtStatus ?? data.status ?? existing.debt_status ?? 'ACTIVE',
+  ).toUpperCase();
+
+  const status = ['ACTIVE', 'PAID', 'OVERDUE'].includes(rawStatus)
+    ? rawStatus
+    : 'ACTIVE';
 
   return queryOne(
     `
       UPDATE ${TABLES.debts}
       SET debt_name = $1,
-          total_amount = $2,
-          remaining_amount = $3,
-          interest_rate = $4,
-          minimum_payment = $5,
-          due_date = $6
-      WHERE debt_id = $7 AND user_id = $8
+          lender = $2,
+          principal_amount = $3,
+          remaining_amount = $4,
+          interest_rate = $5,
+          minimum_payment = $6,
+          due_date = $7,
+          debt_status = $8
+      WHERE debt_id = $9 AND user_id = $10
       RETURNING *
     `,
-    [debtName, Number(totalAmount), Number(remainingAmount), Number(interestRate), Number(minimumPayment), dueDate, debtId, userId],
+    [
+      debtName,
+      lender,
+      principalAmount,
+      remainingAmount,
+      interestRate,
+      minimumPayment,
+      dueDate,
+      status,
+      debtId,
+      userId,
+    ],
   );
 }
 
@@ -791,23 +1133,102 @@ export async function getUpcomingRecurringTransactions(userId, limit = 10) {
 }
 
 export async function createRecurringTransaction(userId, data) {
-  const accountId = data.account_id ?? data.accountId ?? 1;
-  const categoryId = data.category_id ?? data.categoryId ?? null;
+  const accountId = Number(data.account_id ?? data.accountId) || null;
+  const categoryId = Number(data.category_id ?? data.categoryId) || null;
+
+  if (!accountId) {
+    const error = new Error('accountId is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const ownedAccount = await queryOne(
+    `SELECT account_id FROM ${TABLES.accounts}
+     WHERE account_id = $1 AND user_id = $2 LIMIT 1`,
+    [accountId, userId],
+  );
+
+  if (!ownedAccount) {
+    const error = new Error(
+      `Account ${accountId} does not belong to user ${userId}.`,
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
   const amount = Math.abs(Number(data.amount) || 0);
-  const transactionType = String(data.transaction_type ?? data.transactionType ?? data.type ?? 'EXPENSE').toUpperCase();
+
+  if (!(amount > 0)) {
+    const error = new Error('Amount must be greater than zero.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const rawType = String(
+    data.transaction_type ?? data.transactionType ?? data.type ?? 'EXPENSE',
+  ).toUpperCase();
+
+  const transactionType = rawType === 'INCOME' ? 'INCOME' : 'EXPENSE';
+
   const description = data.description ?? data.name ?? '';
-  const frequency = String(data.frequency ?? 'MONTHLY').toUpperCase();
-  const nextRunDate = data.next_run_date ?? data.nextRunDate ?? new Date().toISOString().split('T')[0];
-  const isActive = data.is_active !== undefined ? Boolean(data.is_active) : true;
+
+  const rawFrequency = String(data.frequency ?? 'MONTHLY').toUpperCase();
+
+  const frequency = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(rawFrequency)
+    ? rawFrequency
+    : 'MONTHLY';
+
+  const today = new Date().toISOString().split('T')[0];
+
+  const startDate = data.start_date ?? data.startDate ?? today;
+
+  const nextRunDate =
+    data.next_run_date ?? data.nextRunDate ?? startDate ?? today;
+
+  let endDate = data.end_date ?? data.endDate ?? null;
+
+  // DB invariant: end_date >= start_date
+  if (endDate && String(endDate) < String(startDate)) {
+    endDate = startDate;
+  }
+
+  const isActive =
+    readBoolean(data.is_active, data.isActive, data.active) ?? true;
+
+  // Category is optional on this table, but resolve one when possible.
+  let resolvedCategory = categoryId;
+
+  if (!resolvedCategory) {
+    const fallback = await queryOne(
+      `SELECT category_id FROM ${TABLES.categories}
+       WHERE user_id = $1 AND category_type = $2
+       ORDER BY category_id LIMIT 1`,
+      [userId, transactionType],
+    );
+    resolvedCategory = fallback?.category_id ?? null;
+  }
 
   return queryOne(
     `
       INSERT INTO ${TABLES.recurringTransactions}
-        (user_id, account_id, category_id, amount, transaction_type, description, frequency, next_run_date, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (user_id, account_id, category_id, amount, transaction_type,
+         frequency, description, start_date, end_date, next_run_date, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `,
-    [userId, accountId, categoryId, amount, transactionType, description, frequency, nextRunDate, isActive],
+    [
+      userId,
+      accountId,
+      resolvedCategory,
+      amount,
+      transactionType,
+      frequency,
+      description,
+      startDate,
+      endDate,
+      nextRunDate,
+      isActive,
+    ],
   );
 }
 
@@ -815,14 +1236,58 @@ export async function updateRecurringTransaction(recurringId, userId, data) {
   const existing = await getRecurringTransactionById(recurringId, userId);
   if (!existing) return null;
 
-  const accountId = data.account_id ?? data.accountId ?? existing.account_id;
-  const categoryId = data.category_id ?? data.categoryId ?? existing.category_id;
-  const amount = data.amount !== undefined ? Math.abs(Number(data.amount)) : Number(existing.amount);
-  const transactionType = String(data.transaction_type ?? data.transactionType ?? existing.transaction_type).toUpperCase();
+  const accountId =
+    Number(data.account_id ?? data.accountId) || existing.account_id;
+
+  const categoryId =
+    Number(data.category_id ?? data.categoryId) || existing.category_id;
+
+  const amount = Math.abs(
+    Number(data.amount ?? existing.amount) || 0,
+  );
+
+  if (!(amount > 0)) {
+    const error = new Error('Amount must be greater than zero.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const rawType = String(
+    data.transaction_type ??
+      data.transactionType ??
+      existing.transaction_type,
+  ).toUpperCase();
+
+  const transactionType = rawType === 'INCOME' ? 'INCOME' : 'EXPENSE';
+
   const description = data.description ?? existing.description;
-  const frequency = String(data.frequency ?? existing.frequency).toUpperCase();
-  const nextRunDate = data.next_run_date ?? data.nextRunDate ?? existing.next_run_date;
-  const isActive = data.is_active !== undefined ? Boolean(data.is_active) : existing.is_active;
+
+  const rawFrequency = String(
+    data.frequency ?? existing.frequency ?? 'MONTHLY',
+  ).toUpperCase();
+
+  const frequency = ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(rawFrequency)
+    ? rawFrequency
+    : 'MONTHLY';
+
+  const startDate =
+    data.start_date ?? data.startDate ?? existing.start_date;
+
+  let endDate = data.end_date ?? data.endDate ?? existing.end_date;
+
+  if (endDate && String(endDate) < String(startDate)) {
+    endDate = startDate;
+  }
+
+  const nextRunDate =
+    data.next_run_date ??
+    data.nextRunDate ??
+    existing.next_run_date ??
+    startDate;
+
+  const isActive =
+    readBoolean(data.is_active, data.isActive, data.active) ??
+    existing.is_active;
 
   return queryOne(
     `
@@ -833,12 +1298,27 @@ export async function updateRecurringTransaction(recurringId, userId, data) {
           transaction_type = $4,
           description = $5,
           frequency = $6,
-          next_run_date = $7,
-          is_active = $8
-      WHERE recurring_id = $9 AND user_id = $10
+          start_date = $7,
+          end_date = $8,
+          next_run_date = $9,
+          is_active = $10
+      WHERE recurring_id = $11 AND user_id = $12
       RETURNING *
     `,
-    [accountId, categoryId, amount, transactionType, description, frequency, nextRunDate, isActive, recurringId, userId],
+    [
+      accountId,
+      categoryId,
+      amount,
+      transactionType,
+      description,
+      frequency,
+      startDate,
+      endDate,
+      nextRunDate,
+      isActive,
+      recurringId,
+      userId,
+    ],
   );
 }
 
@@ -1041,6 +1521,7 @@ export default {
   getUserById,
   getUserByEmail,
   getUsers,
+  updateUser,
 
   getAccountsByUserId,
   getAccountById,

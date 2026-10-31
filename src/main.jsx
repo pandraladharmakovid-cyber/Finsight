@@ -1,71 +1,49 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 
 import App from './App.jsx';
+import { ToastProvider } from './lib/hooks.jsx';
 
 import './index.css';
 
-/*
- * FinSight application bootstrap.
- *
- * index.css itself imports the shared theme/global layers.
- * Keeping the entry point small makes the architecture easier
- * to reason about and prevents CSS ordering mistakes.
- */
+const container = document.getElementById('root');
 
-const rootElement =
-  document.getElementById('root');
-
-if (!rootElement) {
-  throw new Error(
-    'FinSight could not find the #root application mount.'
-  );
+if (!container) {
+  throw new Error('FinSight: #root mount point was not found.');
 }
 
-/*
- * Remove the static HTML boot screen once React takes
- * ownership of the page.
- */
-document.documentElement.classList.add(
-  'fs-react-booting'
-);
+/* Restore the user's saved accent + motion preference before first paint. */
+try {
+  const accent = window.localStorage.getItem('finsight:accent');
+  const motion = window.localStorage.getItem('finsight:motion');
 
-const root =
-  ReactDOM.createRoot(rootElement);
+  if (accent) {
+    document.documentElement.dataset.accent = JSON.parse(accent);
+  }
 
-root.render(
+  if (motion) {
+    document.documentElement.dataset.motion = JSON.parse(motion);
+  }
+} catch {
+  /* preferences are optional */
+}
+
+createRoot(container).render(
   <React.StrictMode>
-    <App />
-  </React.StrictMode>
+    <ToastProvider>
+      <App />
+    </ToastProvider>
+  </React.StrictMode>,
 );
 
-/*
- * Give the browser a frame to paint React before
- * removing the static boot state.
- */
+/* Remove the static boot splash once React has painted. */
 requestAnimationFrame(() => {
   requestAnimationFrame(() => {
-    document.documentElement.classList.remove(
-      'fs-react-booting'
-    );
+    const boot = document.getElementById('finsight-boot');
 
-    document.documentElement.classList.add(
-      'fs-react-mounted'
-    );
-
-    const bootScreen =
-      document.getElementById(
-        'finsight-static-boot'
-      );
-
-    if (bootScreen) {
-      bootScreen.classList.add(
-        'fs-static-boot-hidden'
-      );
-
-      window.setTimeout(() => {
-        bootScreen.remove();
-      }, 700);
+    if (boot) {
+      boot.classList.add('boot-done');
+      window.setTimeout(() => boot.remove(), 700);
     }
   });
 });

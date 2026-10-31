@@ -1,499 +1,619 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Calendar,
+  CalendarClock,
   CheckCircle2,
-  ChevronRight,
-  CircleDollarSign,
-  Clock3,
-  Goal,
-  MoreHorizontal,
+  Coins,
+  Pencil,
+  PiggyBank,
   Plus,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Sparkles,
   Target,
+  Trash2,
   TrendingUp,
-  Wallet,
-  X,
 } from 'lucide-react';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+import Card from '../components/ui/Card.jsx';
+import Button from '../components/ui/Button.jsx';
+import Field from '../components/ui/Field.jsx';
+import Modal from '../components/ui/Modal.jsx';
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx';
+import StatCard from '../components/ui/StatCard.jsx';
+import SectionHead from '../components/ui/SectionHead.jsx';
+import { CardSkeleton, EmptyState, ErrorState } from '../components/ui/States.jsx';
+import { ProgressRing } from '../components/charts/index.jsx';
 
-const USER_ID = import.meta.env.VITE_FINSIGHT_USER_ID || '1';
+import { api } from '../lib/api.js';
+import { useResource, useToast } from '../lib/hooks.jsx';
+import {
+  asArray,
+  clamp,
+  daysUntil,
+  money,
+  normaliseGoal,
+  prettyDate,
+  titleCase,
+  unwrap,
+} from '../lib/format.js';
 
-const money = (value) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(Number(value) || 0);
-
-const dateLabel = (value) => {
-  if (!value) return 'No target date';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(date);
+const emptyForm = {
+  name: '',
+  target: '',
+  saved: '',
+  targetDate: '',
+  status: 'ACTIVE',
 };
-
-const daysUntil = (value) => {
-  if (!value) return null;
-  const target = new Date(value);
-  const today = new Date();
-  target.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
-};
-
-const normalizeGoal = (goal) => {
-  const target = Number(goal.target_amount ?? goal.targetAmount ?? goal.goal_amount ?? 0) || 0;
-  const saved = Number(goal.current_amount ?? goal.currentAmount ?? goal.saved_amount ?? 0) || 0;
-  const progress = target > 0 ? Math.min(100, Math.max(0, (saved / target) * 100)) : 0;
-
-  return {
-    ...goal,
-    target,
-    saved,
-    remaining: Math.max(target - saved, 0),
-    progress,
-    title: goal.goal_name ?? goal.goalName ?? goal.name ?? `Savings Goal #${goal.goal_id}`,
-    targetDate: goal.target_date ?? goal.targetDate ?? goal.deadline ?? null,
-  };
-};
-
-function MetricCard({ label, value, helper, icon: Icon, tone }) {
-  return (
-    <div className={`sg-metric sg-metric-${tone}`}>
-      <div className="sg-metric-top">
-        <div className="sg-metric-icon">
-          <Icon size={18} />
-        </div>
-        <span className="sg-live"><span />LIVE</span>
-      </div>
-      <span className="sg-metric-label">{label}</span>
-      <strong className="sg-metric-value">{value}</strong>
-      <span className="sg-metric-helper">{helper}</span>
-    </div>
-  );
-}
-
-function ProgressRing({ progress, size = 94 }) {
-  const radius = 38;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (Math.min(100, Math.max(0, progress)) / 100) * circumference;
-
-  return (
-    <div className="sg-progress-ring" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={radius} fill="none" stroke="rgba(117,139,190,.10)" strokeWidth="7" />
-        <circle
-          cx="50"
-          cy="50"
-          r={radius}
-          fill="none"
-          stroke="url(#savingsGradient)"
-          strokeWidth="7"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          transform="rotate(-90 50 50)"
-        />
-        <defs>
-          <linearGradient id="savingsGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#6c83ff" />
-            <stop offset="100%" stopColor="#b46dff" />
-          </linearGradient>
-        </defs>
-      </svg>
-      <div className="sg-ring-value">
-        <strong>{Math.round(progress)}%</strong>
-        <span>saved</span>
-      </div>
-    </div>
-  );
-}
-
-function GoalCard({ goal, onSelect }) {
-  const days = daysUntil(goal.targetDate);
-  const completed = goal.progress >= 100;
-  const urgent = !completed && days !== null && days >= 0 && days <= 30;
-
-  return (
-    <button type="button" className="sg-goal-card" onClick={() => onSelect(goal)}>
-      <div className="sg-goal-glow" />
-      <div className="sg-goal-header">
-        <div className="sg-goal-icon">
-          {completed ? <CheckCircle2 size={19} /> : <Target size={19} />}
-        </div>
-        <div className="sg-goal-title">
-          <strong>{goal.title}</strong>
-          <span>Goal #{goal.goal_id ?? goal.id}</span>
-        </div>
-        <MoreHorizontal size={17} className="sg-more" />
-      </div>
-
-      <div className="sg-goal-amounts">
-        <div>
-          <span>CURRENT</span>
-          <strong>{money(goal.saved)}</strong>
-        </div>
-        <div>
-          <span>TARGET</span>
-          <strong>{money(goal.target)}</strong>
-        </div>
-      </div>
-
-      <div className="sg-progress-track">
-        <div className="sg-progress-fill" style={{ width: `${goal.progress}%` }} />
-      </div>
-
-      <div className="sg-goal-progress-row">
-        <span>{goal.progress.toFixed(1)}% complete</span>
-        <strong>{money(goal.remaining)} remaining</strong>
-      </div>
-
-      <div className="sg-goal-divider" />
-
-      <div className="sg-goal-footer">
-        <div>
-          <Calendar size={13} />
-          <span>{goal.targetDate ? dateLabel(goal.targetDate) : 'No target date'}</span>
-        </div>
-        {completed ? (
-          <span className="sg-complete-pill"><CheckCircle2 size={11} /> Completed</span>
-        ) : urgent ? (
-          <span className="sg-urgent-pill"><Clock3 size={11} /> {days === 0 ? 'Due today' : `${days}d left`}</span>
-        ) : (
-          <ChevronRight size={15} className="sg-chevron" />
-        )}
-      </div>
-    </button>
-  );
-}
-
-function GoalModal({ goal, onClose, onDelete }) {
-  if (!goal) return null;
-  const days = daysUntil(goal.targetDate);
-  const monthlyRequired = days !== null && days > 0 ? goal.remaining / Math.max(1, days / 30.4375) : 0;
-
-  return (
-    <div className="sg-modal-layer">
-      <button type="button" className="sg-modal-backdrop" onClick={onClose} aria-label="Close goal details" />
-      <section className="sg-modal" role="dialog" aria-modal="true">
-        <div className="sg-modal-header">
-          <div>
-            <span>SAVINGS GOAL</span>
-            <h2>{goal.title}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="sg-close"><X size={18} /></button>
-        </div>
-
-        <div className="sg-modal-hero">
-          <ProgressRing progress={goal.progress} size={116} />
-          <div className="sg-modal-hero-copy">
-            <span>CURRENT SAVINGS</span>
-            <strong>{money(goal.saved)}</strong>
-            <small>of {money(goal.target)}</small>
-          </div>
-        </div>
-
-        <div className="sg-detail-grid">
-          <div><span>Goal ID</span><strong>#{goal.goal_id ?? goal.id}</strong></div>
-          <div><span>Progress</span><strong>{goal.progress.toFixed(1)}%</strong></div>
-          <div><span>Remaining</span><strong>{money(goal.remaining)}</strong></div>
-          <div><span>Target date</span><strong>{dateLabel(goal.targetDate)}</strong></div>
-          <div><span>Days remaining</span><strong>{days === null ? '—' : days < 0 ? 'Past target' : days}</strong></div>
-          <div><span>Required / month</span><strong>{monthlyRequired ? money(monthlyRequired) : '—'}</strong></div>
-        </div>
-
-        <div className="sg-modal-actions">
-          <button type="button" onClick={onClose}>Close</button>
-          <button
-            type="button"
-            onClick={() => onDelete(goal.goal_id ?? goal.id)}
-            style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}
-          >
-            Delete Goal
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function CreateGoalModal({ isOpen, onClose, onSubmit, submitting }) {
-  const [name, setName] = useState('');
-  const [targetAmount, setTargetAmount] = useState('');
-  const [currentAmount, setCurrentAmount] = useState('');
-  const [targetDate, setTargetDate] = useState('');
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    await onSubmit({
-      goal_name: name,
-      target_amount: Number(targetAmount) || 0,
-      current_amount: Number(currentAmount) || 0,
-      target_date: targetDate || null,
-    });
-  };
-
-  return (
-    <div className="sg-modal-layer">
-      <button type="button" className="sg-modal-backdrop" onClick={onClose} />
-      <form onSubmit={handleSubmit} className="sg-modal p-6">
-        <div className="flex items-center justify-between border-b border-white/10 pb-4">
-          <h2 className="text-xl font-black text-white">Create Savings Goal</h2>
-          <button type="button" onClick={onClose} className="sg-close"><X size={18} /></button>
-        </div>
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Goal Name *</label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. New Laptop / Emergency Fund"
-              className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white outline-none focus:border-violet-400"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Target Amount (₹) *</label>
-              <input
-                type="number"
-                required
-                step="0.01"
-                value={targetAmount}
-                onChange={(e) => setTargetAmount(e.target.value)}
-                placeholder="50000"
-                className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white outline-none focus:border-violet-400"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Already Saved (₹)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={currentAmount}
-                onChange={(e) => setCurrentAmount(e.target.value)}
-                placeholder="5000"
-                className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white outline-none focus:border-violet-400"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-1">Target Deadline</label>
-            <input
-              type="date"
-              value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
-              className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white outline-none focus:border-violet-400"
-            />
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl bg-white/5 text-slate-300">Cancel</button>
-          <button type="submit" disabled={submitting} className="px-5 py-2 rounded-xl bg-violet-600 text-white font-bold">
-            {submitting ? 'Saving...' : 'Save Goal'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
 
 export default function Savings() {
-  const [goals, setGoals] = useState([]);
-  const [overview, setOverview] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const toast = useToast();
+  const [params, setParams] = useSearchParams();
 
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [sort, setSort] = useState('progress');
-  const [selectedGoal, setSelectedGoal] = useState(null);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const overviewRes = useResource(() => api.savingsOverview(), []);
 
-  const fetchSavings = useCallback(async ({ silent = false } = {}) => {
-    if (!USER_ID) {
-      setError('VITE_FINSIGHT_USER_ID is not configured.');
-      setLoading(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const [contributeTarget, setContributeTarget] = useState(null);
+  const [contribution, setContribution] = useState('');
+  const [contributing, setContributing] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
+  const payload = unwrap(overviewRes.data) ?? {};
+  const goals = useMemo(
+    () => asArray(payload.goals).map(normaliseGoal),
+    [payload.goals],
+  );
+
+  const visible = useMemo(
+    () =>
+      statusFilter === 'ALL'
+        ? goals
+        : goals.filter((goal) => goal.status === statusFilter),
+    [goals, statusFilter],
+  );
+
+  const totals = useMemo(() => {
+    const target = goals.reduce((total, goal) => total + goal.target, 0);
+    const saved = goals.reduce((total, goal) => total + goal.saved, 0);
+    const completed = goals.filter((goal) => goal.status === 'COMPLETED').length;
+
+    return {
+      target,
+      saved,
+      remaining: Math.max(target - saved, 0),
+      progress: target > 0 ? (saved / target) * 100 : 0,
+      completed,
+      count: goals.length,
+    };
+  }, [goals]);
+
+  useEffect(() => {
+    if (params.get('new') === '1') {
+      openCreate();
+      const next = new URLSearchParams(params);
+      next.delete('new');
+      setParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyForm);
+    setErrors({});
+    setFormOpen(true);
+  }
+
+  function openEdit(goal) {
+    setEditing(goal);
+    setForm({
+      name: goal.name,
+      target: String(goal.target),
+      saved: String(goal.saved),
+      targetDate: goal.targetDate ? String(goal.targetDate).slice(0, 10) : '',
+      status: goal.status,
+    });
+    setErrors({});
+    setFormOpen(true);
+  }
+
+  async function submitForm(event) {
+    event?.preventDefault();
+
+    const next = {};
+
+    if (!form.name.trim()) next.name = 'Give this goal a name.';
+
+    const target = Number(form.target);
+    if (!form.target || !Number.isFinite(target) || target <= 0) {
+      next.target = 'Target must be greater than zero.';
+    }
+
+    const saved = form.saved === '' ? 0 : Number(form.saved);
+    if (!Number.isFinite(saved) || saved < 0) {
+      next.saved = 'Saved amount cannot be negative.';
+    }
+
+    if (!next.target && !next.saved && saved > target) {
+      next.saved = 'Saved amount cannot exceed the target.';
+    }
+
+    setErrors(next);
+    if (Object.keys(next).length) return;
+
+    setSaving(true);
+
+    const body = {
+      goalName: form.name.trim(),
+      targetAmount: target,
+      currentAmount: saved,
+      targetDate: form.targetDate || null,
+      status: form.status,
+    };
+
+    try {
+      if (editing) {
+        await api.updateSavingsGoal(editing.id, body);
+        toast.success('Goal updated', body.goalName);
+      } else {
+        await api.createSavingsGoal(body);
+        toast.success('Goal created', `${body.goalName} is now tracked.`);
+      }
+
+      setFormOpen(false);
+      await overviewRes.refresh();
+    } catch (error) {
+      toast.error('Could not save goal', error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitContribution(event) {
+    event?.preventDefault();
+
+    const amount = Number(contribution);
+
+    if (!contribution || !Number.isFinite(amount) || amount <= 0) {
+      toast.warn('Invalid amount', 'Enter a contribution greater than zero.');
       return;
     }
 
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-    setError('');
+    setContributing(true);
+
+    const nextSaved = Math.min(contributeTarget.saved + amount, contributeTarget.target);
 
     try {
-      const [goalsRes, overviewRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/savings/${USER_ID}`),
-        fetch(`${API_BASE_URL}/savings/${USER_ID}/overview`),
-      ]);
+      await api.updateSavingsGoal(contributeTarget.id, {
+        goalName: contributeTarget.name,
+        targetAmount: contributeTarget.target,
+        currentAmount: nextSaved,
+        targetDate: contributeTarget.targetDate,
+        status:
+          nextSaved >= contributeTarget.target ? 'COMPLETED' : contributeTarget.status,
+      });
 
-      if (!goalsRes.ok || !overviewRes.ok) {
-        throw new Error('Failed to load savings records.');
-      }
+      toast.success(
+        'Contribution added',
+        `${money(amount)} added to ${contributeTarget.name}.`,
+      );
 
-      const goalsJson = await goalsRes.json();
-      const overviewJson = await overviewRes.json();
-
-      setGoals((goalsJson.data || []).map(normalizeGoal));
-      setOverview(overviewJson.data || {});
-    } catch (err) {
-      setError(err?.message || 'Unable to load savings data.');
+      setContributeTarget(null);
+      setContribution('');
+      await overviewRes.refresh();
+    } catch (error) {
+      toast.error('Contribution failed', error.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setContributing(false);
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    fetchSavings();
-  }, [fetchSavings]);
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
 
-  const handleCreateGoal = async (payload) => {
-    setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/savings/${USER_ID}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error('Failed to create goal');
-      setIsCreateOpen(false);
-      await fetchSavings({ silent: true });
-    } catch (err) {
-      setError(err.message);
+      await api.deleteSavingsGoal(deleteTarget.id);
+      toast.success('Goal deleted', deleteTarget.name);
+      setDeleteTarget(null);
+      await overviewRes.refresh();
+    } catch (error) {
+      toast.error('Delete failed', error.message);
     } finally {
-      setSubmitting(false);
+      setDeleting(false);
     }
-  };
+  }
 
-  const handleDeleteGoal = async (goalId) => {
-    setSubmitting(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/savings/${USER_ID}/${goalId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Failed to delete goal');
-      setSelectedGoal(null);
-      await fetchSavings({ silent: true });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const metrics = useMemo(() => {
-    const backend = overview?.metrics || {};
-    const totalTarget = Number(backend.totalTarget) || goals.reduce((s, g) => s + g.target, 0);
-    const totalSaved = Number(backend.totalSaved) || goals.reduce((s, g) => s + g.saved, 0);
-    const remaining = Math.max(totalTarget - totalSaved, 0);
-    const overallProgress = totalTarget > 0 ? Math.min(100, (totalSaved / totalTarget) * 100) : 0;
-    const completed = goals.filter((g) => g.progress >= 100).length;
-
-    return {
-      goalCount: Number(backend.goalCount) || goals.length,
-      totalTarget,
-      totalSaved,
-      remaining,
-      overallProgress,
-      completed,
-    };
-  }, [goals, overview]);
-
-  const filteredGoals = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return goals
-      .filter((goal) => {
-        const matchesSearch = !query || goal.title.toLowerCase().includes(query);
-        const completed = goal.progress >= 100;
-        const matchesFilter =
-          filter === 'all' ||
-          (filter === 'active' && !completed) ||
-          (filter === 'completed' && completed) ||
-          (filter === 'near' && !completed && daysUntil(goal.targetDate) <= 30);
-        return matchesSearch && matchesFilter;
-      })
-      .sort((a, b) => {
-        if (sort === 'amount') return b.saved - a.saved;
-        if (sort === 'target') return b.target - a.target;
-        if (sort === 'name') return a.title.localeCompare(b.title);
-        return b.progress - a.progress;
-      });
-  }, [goals, search, filter, sort]);
+  if (overviewRes.error) {
+    return (
+      <ErrorState
+        error={overviewRes.error}
+        onRetry={overviewRes.reload}
+        title="Savings goals could not load"
+      />
+    );
+  }
 
   return (
-    <main className="sg-page px-4 sm:px-6 lg:px-8 max-w-[1800px] mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-black text-white">Savings Goals</h1>
-          <p className="text-sm text-slate-400">Track and manage your real PostgreSQL savings objectives.</p>
+    <div className="fs-col fs-gap-20">
+      <section className="fs-grid fs-grid-4">
+        <StatCard
+          label="Total saved"
+          value={totals.saved}
+          icon={PiggyBank}
+          tone="mint"
+          footnote={`across ${totals.count} goals`}
+        />
+        <StatCard
+          label="Total target"
+          value={totals.target}
+          icon={Target}
+          tone="violet"
+          delay={1}
+          footnote="combined ambition"
+        />
+        <StatCard
+          label="Still needed"
+          value={totals.remaining}
+          icon={TrendingUp}
+          tone="cyan"
+          delay={2}
+          footnote="to reach every goal"
+        />
+        <StatCard
+          label="Completed"
+          value={totals.completed}
+          icon={CheckCircle2}
+          tone="amber"
+          delay={3}
+          format={(n) => Math.round(n).toString()}
+          footnote="goals fully funded"
+        />
+      </section>
+
+      <Card glow className="fs-reveal">
+        <div className="fs-row fs-gap-24 fs-wrap" style={{ alignItems: 'center' }}>
+          <ProgressRing
+            value={totals.progress}
+            size={112}
+            thickness={10}
+            label="Funded"
+          />
+
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div className="fs-eyebrow">Overall funding</div>
+            <h3 style={{ fontSize: 20, marginTop: 4 }}>
+              {money(totals.saved)} of {money(totals.target)}
+            </h3>
+            <p className="fs-sm fs-dim fs-mt-4">
+              {totals.remaining > 0
+                ? `${money(totals.remaining)} remaining across all active goals.`
+                : 'Every goal is fully funded. Outstanding work.'}
+            </p>
+
+            <div className="fs-row fs-gap-8 fs-mt-16">
+              <Button variant="primary" icon={Plus} onClick={openCreate}>
+                New goal
+              </Button>
+            </div>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsCreateOpen(true)}
-          className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-3 text-sm font-black text-white shadow-lg"
-        >
-          <Plus size={17} />
-          Add Savings Goal
-        </button>
+      </Card>
+
+      <div className="fs-row-between fs-wrap">
+        <div className="fs-tabs">
+          {['ALL', 'ACTIVE', 'COMPLETED', 'PAUSED'].map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`fs-tab ${statusFilter === option ? 'is-on' : ''}`}
+              onClick={() => setStatusFilter(option)}
+            >
+              {titleCase(option)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <section className="sg-metrics mb-6">
-        <MetricCard label="SAVINGS GOALS" value={metrics.goalCount} helper="Active records" icon={Target} tone="blue" />
-        <MetricCard label="TOTAL SAVED" value={money(metrics.totalSaved)} helper="Current saved amount" icon={Wallet} tone="green" />
-        <MetricCard label="TOTAL TARGET" value={money(metrics.totalTarget)} helper="Combined goals target" icon={CircleDollarSign} tone="purple" />
-        <MetricCard label="REMAINING" value={money(metrics.remaining)} helper="Amount still required" icon={TrendingUp} tone="orange" />
-      </section>
+      {overviewRes.loading ? (
+        <div className="fs-grid fs-grid-3">
+          {[0, 1, 2].map((index) => (
+            <CardSkeleton key={index} rows={4} />
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
+        <Card>
+          <EmptyState
+            icon={PiggyBank}
+            title="No goals in this view"
+            message="Create a savings goal and track real progress toward it."
+            action={
+              <Button variant="primary" icon={Plus} onClick={openCreate}>
+                Create a goal
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <div className="fs-grid fs-grid-3">
+          {visible.map((goal, index) => {
+            const days = daysUntil(goal.targetDate);
+            const done = goal.progress >= 100;
 
-      <section className="sg-goals-section">
-        <div className="sg-toolbar mb-4">
-          <div className="sg-search">
-            <Search size={15} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search savings goals..."
+            return (
+              <article
+                key={goal.id}
+                className="fs-card fs-card-pad is-interactive fs-reveal"
+                style={{ '--i': index }}
+              >
+                <div className="fs-row-between fs-mb-16">
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      className="fs-sm fs-truncate"
+                      style={{ color: 'var(--text-1)', fontWeight: 620 }}
+                    >
+                      {goal.name}
+                    </div>
+
+                    <div className="fs-xs fs-dim-2 fs-row fs-gap-4">
+                      <CalendarClock size={11} />
+                      {goal.targetDate
+                        ? prettyDate(goal.targetDate, { year: undefined })
+                        : 'No deadline'}
+                    </div>
+                  </div>
+
+                  <ProgressRing
+                    value={clamp(goal.progress, 0, 100)}
+                    size={56}
+                    thickness={6}
+                    color={done ? 'var(--mint)' : 'var(--violet)'}
+                    color2={done ? 'var(--cyan)' : 'var(--cyan)'}
+                  />
+                </div>
+
+                <div className="fs-row-between" style={{ alignItems: 'baseline' }}>
+                  <strong className="fs-num" style={{ fontSize: 19, color: 'var(--text-1)' }}>
+                    {money(goal.saved)}
+                  </strong>
+                  <span className="fs-num fs-xs fs-dim">of {money(goal.target)}</span>
+                </div>
+
+                <div className="fs-meter fs-mt-10">
+                  <span
+                    style={{
+                      width: `${clamp(goal.progress, 0, 100)}%`,
+                      '--meter-fill': done
+                        ? 'linear-gradient(90deg,#34d399,#6ee7b7)'
+                        : undefined,
+                    }}
+                  />
+                </div>
+
+                <div className="fs-row-between fs-mt-12">
+                  <span
+                    className={`fs-badge ${
+                      goal.status === 'COMPLETED'
+                        ? 'fs-badge-pos'
+                        : goal.status === 'PAUSED'
+                          ? 'fs-badge-warn'
+                          : 'fs-badge-info'
+                    }`}
+                  >
+                    {titleCase(goal.status)}
+                  </span>
+
+                  <span className="fs-xs fs-dim-2">
+                    {days !== null
+                      ? days >= 0
+                        ? `${days} days left`
+                        : `${Math.abs(days)} days overdue`
+                      : '—'}
+                  </span>
+                </div>
+
+                <div className="fs-row fs-gap-6 fs-mt-16">
+                  <Button
+                    size="sm"
+                    icon={Coins}
+                    onClick={() => {
+                      setContributeTarget(goal);
+                      setContribution('');
+                    }}
+                    disabled={goal.progress >= 100}
+                    style={{ flex: 1 }}
+                  >
+                    Add funds
+                  </Button>
+
+                  <button
+                    type="button"
+                    className="fs-btn fs-btn-ghost fs-btn-icon"
+                    style={{ width: 30, height: 30 }}
+                    onClick={() => openEdit(goal)}
+                    aria-label={`Edit ${goal.name}`}
+                  >
+                    <Pencil size={13} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className="fs-btn fs-btn-ghost fs-btn-icon"
+                    style={{ width: 30, height: 30, color: 'var(--rose)' }}
+                    onClick={() => setDeleteTarget(goal)}
+                    aria-label={`Delete ${goal.name}`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create / edit */}
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editing ? 'Edit savings goal' : 'Create a savings goal'}
+        subtitle="Progress is measured against the target amount."
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setFormOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={saving} icon={Plus} onClick={submitForm}>
+              {editing ? 'Save changes' : 'Create goal'}
+            </Button>
+          </>
+        }
+      >
+        <form className="fs-col fs-gap-16" onSubmit={submitForm}>
+          <Field
+            label="Goal name"
+            placeholder="e.g. Emergency fund"
+            value={form.name}
+            error={errors.name}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, name: event.target.value }))
+            }
+          />
+
+          <div className="fs-grid fs-grid-2">
+            <Field
+              label="Target amount"
+              type="number"
+              min="1"
+              step="1"
+              prefix="₹"
+              placeholder="100000"
+              value={form.target}
+              error={errors.target}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, target: event.target.value }))
+              }
+            />
+
+            <Field
+              label="Already saved"
+              type="number"
+              min="0"
+              step="1"
+              prefix="₹"
+              placeholder="0"
+              value={form.saved}
+              error={errors.saved}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, saved: event.target.value }))
+              }
             />
           </div>
-          <div className="sg-select">
-            <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-              <option value="all">All goals</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="near">Near target</option>
-            </select>
-          </div>
-        </div>
 
-        {loading ? (
-          <div className="p-12 text-center text-slate-400">Loading savings goals...</div>
-        ) : filteredGoals.length ? (
-          <div className="sg-goal-grid">
-            {filteredGoals.map((goal) => (
-              <GoalCard key={goal.goal_id ?? goal.id} goal={goal} onSelect={setSelectedGoal} />
+          <div className="fs-grid fs-grid-2">
+            <Field
+              label="Target date"
+              type="date"
+              value={form.targetDate}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, targetDate: event.target.value }))
+              }
+            />
+
+            <Field
+              as="select"
+              label="Status"
+              value={form.status}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, status: event.target.value }))
+              }
+              options={[
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'PAUSED', label: 'Paused' },
+                { value: 'COMPLETED', label: 'Completed' },
+              ]}
+            />
+          </div>
+        </form>
+      </Modal>
+
+      {/* Contribute */}
+      <Modal
+        open={Boolean(contributeTarget)}
+        onClose={() => setContributeTarget(null)}
+        title="Add funds to this goal"
+        subtitle={
+          contributeTarget
+            ? `${contributeTarget.name} · ${money(contributeTarget.saved)} of ${money(contributeTarget.target)}`
+            : ''
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setContributeTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              loading={contributing}
+              icon={Coins}
+              onClick={submitContribution}
+            >
+              Add funds
+            </Button>
+          </>
+        }
+      >
+        <form className="fs-col fs-gap-16" onSubmit={submitContribution}>
+          <Field
+            label="Contribution"
+            type="number"
+            min="1"
+            step="1"
+            prefix="₹"
+            placeholder="5000"
+            value={contribution}
+            autoFocus
+            hint={
+              contributeTarget
+                ? `${money(contributeTarget.remaining)} still needed to complete this goal.`
+                : ''
+            }
+            onChange={(event) => setContribution(event.target.value)}
+          />
+
+          <div className="fs-row fs-gap-8 fs-wrap">
+            {[1000, 5000, 10000, 25000].map((amount) => (
+              <button
+                key={amount}
+                type="button"
+                className="fs-chip"
+                onClick={() => setContribution(String(amount))}
+              >
+                +{money(amount)}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="sg-empty p-12 text-center text-slate-500">No savings goals found.</div>
-        )}
-      </section>
+        </form>
+      </Modal>
 
-      <GoalModal goal={selectedGoal} onClose={() => setSelectedGoal(null)} onDelete={handleDeleteGoal} />
-      <CreateGoalModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} onSubmit={handleCreateGoal} submitting={submitting} />
-    </main>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        loading={deleting}
+        title="Delete this goal?"
+        message={
+          deleteTarget
+            ? `“${deleteTarget.name}” and its ${money(deleteTarget.saved)} of recorded progress will be removed.`
+            : ''
+        }
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+    </div>
   );
 }

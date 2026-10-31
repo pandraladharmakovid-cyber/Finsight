@@ -1,204 +1,436 @@
-<p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=220&section=header&text=FinSight&fontSize=70&fontColor=ffffff&desc=Financial%20intelligence%20for%20your%20everyday%20money&descSize=20&descAlignY=72" alt="FinSight banner" width="100%" />
-</p>
+# FinSight v2.0 — Personal Financial Intelligence System
 
-<p align="center">
-  <a href="https://finsight.bytexl.live/"><img src="https://img.shields.io/badge/Live%20Demo-finsight.bytexl.live-8b5cf6?style=for-the-badge" alt="Live demo" /></a>
-  <img src="https://img.shields.io/badge/status-work%20in%20progress-f59e0b?style=for-the-badge" alt="Status: work in progress" />
-</p>
+**FinSight** is a full-stack personal finance management application designed to help users manage their financial activities through a centralized, interactive dashboard.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white" alt="React" />
-  <img src="https://img.shields.io/badge/Vite-6-646cff?logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/Node.js-22-339933?logo=nodedotjs&logoColor=white" alt="Node.js" />
-  <img src="https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white" alt="Express" />
-  <img src="https://img.shields.io/badge/PostgreSQL-336791?logo=postgresql&logoColor=white" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/Recharts-3-22b5bf" alt="Recharts" />
-</p>
+It brings together account management, transaction tracking, budgeting, savings goals, debt management, recurring payments, financial analytics, and audit history in one platform.
 
-**FinSight** is a full-stack personal finance dashboard. It brings your accounts, transactions, budgets, savings goals, debts and recurring payments into one place, with analytics charts and an audit trail, all backed by a live PostgreSQL database.
-
-🔗 **Live website:** [finsight.bytexl.live](https://finsight.bytexl.live/)
-
-> ⚠️ **Project status: work in progress.**
-> FinSight is **not completely finished yet**. Some pages and features are still being built or polished, and we will keep improving it. Expect rough edges while we complete the remaining parts.
+Built with React, Vite, Node.js, Express, and PostgreSQL, FinSight focuses on practical financial visibility, organized data management, and an intuitive user experience.
 
 ---
 
-## 🖼 Screenshots
+## 1. Project Overview
 
-### Dashboard: Financial Command Center
-![Dashboard](docs/screenshots/dashboard.png)
+FinSight provides a centralized financial workspace where users can:
 
-### Transactions
-![Transactions](docs/screenshots/transactions.png)
+- Monitor their overall financial position.
+- Track income and expenses.
+- Manage multiple financial accounts.
+- Create and monitor budgets.
+- Set savings goals and track progress.
+- Manage outstanding debts.
+- Track recurring payments.
+- Analyze spending patterns.
+- Review financial activity and audit history.
 
-### Budgets
-![Budgets](docs/screenshots/budgets.png)
+The application uses a PostgreSQL database for persistent financial data storage.
 
-### Analytics
-![Analytics](docs/screenshots/analytics.png)
+## 2. Key Features
+
+### Dashboard
+- Financial overview and net worth.
+- Income and expense summaries.
+- Account balance overview.
+- Spending trends and visual charts.
+- Budget utilization.
+- Savings and debt summaries.
+- Recent financial transactions.
+
+### Transaction Management
+- Create, view, update, and delete transactions.
+- Track income and expenses.
+- Search and filter transactions.
+- Filter by transaction type, account, and date.
+- Pagination and CSV export.
+- Input validation.
+
+### Account Management
+- Manage multiple financial accounts.
+- Support different account types.
+- View account balances.
+- Activate and deactivate accounts.
+- Track account-related transactions.
+
+### Category Management
+- Create and manage income and expense categories.
+- Organize transactions by category.
+- Review category-wise spending.
+
+### Budget Management
+- Create and update budgets.
+- Monitor spending against budget limits.
+- View budget utilization.
+- Identify over-budget situations.
+
+### Savings Management
+- Create savings goals.
+- Set target amounts.
+- Track current savings progress.
+- Add contributions.
+- Monitor completed and active goals.
+
+### Debt Management
+- Record outstanding debts.
+- Track principal and remaining amounts.
+- Log debt payments.
+- Monitor overdue and paid debts.
+
+### Recurring Payments
+- Manage recurring financial transactions.
+- Support daily, weekly, monthly, and yearly frequencies.
+- Pause and resume recurring entries.
+- Review recurring payment commitments.
+
+### Financial Analytics
+- Analyze financial performance.
+- Review spending patterns.
+- Explore account and budget analytics.
+- Monitor savings and debt progress.
+- View financial summaries.
+
+### Audit Log
+- Review financial activity history.
+- Inspect recorded changes.
+- View before-and-after data where available.
+
+### Settings
+- Manage user profile information.
+- Customize application appearance.
+- Change accent themes.
+- Configure reduced-motion preferences.
+- Check backend and database health.
 
 ---
 
-## ✨ Features
+## 3. Technology Stack
 
-| Area | What you can do |
-| --- | --- |
-| 📊 **Dashboard** | Net worth, recent income and spending, financial score, savings rate and debt ratio at a glance |
-| 💳 **Accounts** | Track bank, cash, credit card and investment accounts with live balances |
-| 🧾 **Transactions** | Add, edit, filter and delete income and expenses, with CSV export |
-| 🎯 **Budgets** | Set category budgets and see how spending compares to the limit |
-| 🐖 **Savings goals** | Create goals and follow progress toward each target |
-| 🏦 **Debts** | Monitor balances, interest and repayment progress |
-| 🔁 **Recurring** | Manage scheduled income and bills |
-| 🗂 **Categories** | Organise spending and see totals per category |
-| 📈 **Analytics** | Income vs expense, category spending, net worth and budget charts |
-| 🕵️ **Audit log** | Review a history of changes to your financial records |
-| 📱 **Responsive UI** | Sidebar on desktop, bottom navigation on mobile |
+| Layer | Technologies |
+|---|---|
+| Frontend | React 19, Vite |
+| Programming Language | JavaScript (ES Modules) |
+| Backend | Node.js, Express 5 |
+| Database | PostgreSQL |
+| Database Library | node-postgres (`pg`) |
+| Routing | React Router |
+| Icons | Lucide React |
+| Styling | CSS |
+| API Communication | REST API |
+| Environment Configuration | dotenv |
+| Version Control | Git and GitHub |
 
 ---
 
-## 🧠 How it works
+## 4. System Architecture
 
-```mermaid
-flowchart LR
-    A[React + Vite frontend] -->|/api requests| B[Express API]
-    B --> C[Controllers]
-    C --> D[Services]
-    D --> E[(PostgreSQL)]
+FinSight follows a frontend-backend-database architecture.
+
+**Frontend**
+- React components and pages.
+- Dashboard and financial management interfaces.
+- API client for backend communication.
+- Client-side navigation and state management.
+
+**Backend**
+- Express REST API.
+- Route and controller organization.
+- Business logic and database queries.
+- Request logging and error handling.
+- Input validation.
+
+**Database**
+- PostgreSQL relational database.
+- Persistent storage for financial records.
+- Database views for financial summaries and analytics.
+- Database triggers for balance maintenance and audit tracking.
+
+### Application Data Flow
+
+```text
+User
+  |
+  v
+React Frontend
+  |
+  v
+API Client
+  |
+  v
+Express REST API
+  |
+  v
+Backend Services
+  |
+  v
+PostgreSQL Database
+  |
+  v
+API Response
+  |
+  v
+Dashboard / UI Update
 ```
 
-The React app talks to the Express API under `/api`. Controllers validate requests, services hold the business logic, and a single queries module runs SQL against the `finance` schema in PostgreSQL.
+---
+
+## 5. Database Structure
+
+The project uses PostgreSQL with the `finance` schema.
+
+### Main Tables
+
+- users
+- accounts
+- categories
+- transactions
+- budgets
+- savings_goals
+- debts
+- recurring_transactions
+- audit_log
+
+### Database Views
+
+- account_balances
+- budget_performance
+- category_spending
+- debt_summary
+- monthly_expense_analysis
+- savings_progress
+- user_financial_summary
+
+### Database Triggers
+
+- `trg_update_account_balance`
+- `trg_audit_transactions`
+- `trg_users_updated_at`
 
 ---
 
-## 🛠 Tech stack
+## 6. Project Structure
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | React 19, Vite, React Router, Recharts, Lucide icons |
-| Backend | Node.js, Express 5, CORS, dotenv |
-| Database | PostgreSQL (`pg` driver) |
-| Styling | Custom CSS with a shared theme |
-
----
-
-## 📁 Project structure
-
-```
-Finsight/
+```text
+FinSight/
+│
+├── backend/
+│   ├── src/
+│   │   ├── app.js
+│   │   ├── server.js
+│   │   ├── config/
+│   │   ├── db/
+│   │   ├── services/
+│   │   ├── controllers/
+│   │   ├── routes/
+│   │   ├── middleware/
+│   │   └── utils/
+│   │
+│   ├── .env
+│   ├── .env.example
+│   └── package.json
+│
+├── src/
+│   ├── main.jsx
+│   ├── App.jsx
+│   ├── index.css
+│   │
+│   ├── lib/
+│   │   ├── api.js
+│   │   ├── format.js
+│   │   └── hooks.jsx
+│   │
+│   ├── components/
+│   │   ├── layout/
+│   │   ├── ui/
+│   │   └── charts/
+│   │
+│   └── pages/
+│       ├── Dashboard.jsx
+│       ├── Transactions.jsx
+│       ├── Accounts.jsx
+│       ├── Categories.jsx
+│       ├── Budgets.jsx
+│       ├── Savings.jsx
+│       ├── Debts.jsx
+│       ├── Recurring.jsx
+│       ├── Analytics.jsx
+│       ├── AuditLog.jsx
+│       └── Settings.jsx
+│
+├── docs/
+├── tests/
+├── tools/
 ├── index.html
 ├── vite.config.js
 ├── package.json
-├── docs/
-│   └── screenshots/
-├── src/                      # React frontend
-│   ├── pages/                # Dashboard, Transactions, Budgets, ...
-│   ├── components/           # UI, charts, forms, layout
-│   ├── hooks/                # Data hooks (useBudgets, useSavings, ...)
-│   ├── services/             # API client and per-feature services
-│   ├── layouts/              # App layout
-│   ├── styles/               # Theme and global CSS
-│   └── utils/                # Formatting and calculations
-└── backend/
-    └── src/
-        ├── routes/           # Express routers
-        ├── controllers/      # Request handlers
-        ├── services/         # Business logic
-        ├── db/queries.js     # SQL queries
-        ├── middleware/       # Logger, 404, error handler
-        └── config/           # Env, database, logger
+├── package-lock.json
+├── .env.example
+├── .gitignore
+└── README.md
 ```
 
 ---
 
-## 🔌 API overview
+## 7. Installation and Local Setup
 
-All endpoints are prefixed with `/api`. Most take a `:userId`.
+### Prerequisites
 
-| Resource | Example endpoints |
-| --- | --- |
-| Health | `GET /api/health` |
-| Dashboard | `GET /api/dashboard/:userId` |
-| Accounts | `GET /api/accounts/:userId`, `POST`, `PUT`, `DELETE` |
-| Transactions | `GET /api/transactions/:userId`, `/recent`, `/summary`, `POST`, `PUT`, `DELETE` |
-| Budgets | `GET /api/budgets/:userId`, `/summary`, `/performance`, `POST`, `PUT`, `DELETE` |
-| Savings | `GET /api/savings/:userId`, `/overview`, `POST`, `PUT`, `DELETE` |
-| Debts | `GET /api/debts/:userId`, `/summary`, `/overview`, `POST`, `PUT`, `DELETE` |
-| Recurring | `GET /api/recurring/:userId`, `/overview`, `POST`, `PUT`, `DELETE` |
-| Analytics | `GET /api/analytics/:userId/financial`, `/spending`, `/accounts`, `/budgets`, `/debts`, `/savings` |
-| Audit | `GET /api/audit/:userId`, `/overview` |
-| Categories | `GET /api/categories`, `POST`, `PUT`, `DELETE` |
+- Node.js
+- npm
+- PostgreSQL database
+- Git
 
----
-
-## 🚀 Getting started
-
-### 1. Clone and install
+### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/pandraladharmakovid-cyber/Finsight.git
-cd Finsight
-npm install
-cd backend && npm install && cd ..
+git clone https://github.com/pandraladharmakovid-cyber/FinSight.git
+cd FinSight
 ```
 
-### 2. Environment variables
+### Step 2: Install Dependencies
 
-Create `backend/.env`:
+```bash
+npm install
+```
+
+The root installation also installs backend dependencies through the configured `postinstall` script.
+
+### Step 3: Configure Environment Variables
+
+Create or update `backend/.env`:
 
 ```env
 PORT=5000
-DB_HOST=your-db-host
-DB_PORT=5432
-DB_NAME=your-db-name
-DB_USER=your-db-user
-DB_PASSWORD=your-db-password
+
+DB_HOST=your_postgresql_host
+DB_PORT=your_postgresql_port
+DB_NAME=your_database_name
+DB_USER=your_database_username
+DB_PASSWORD=your_database_password
+
 DB_SCHEMA=finance
-CORS_ORIGIN=*
 ```
 
-Create `.env` in the project root:
+Create the frontend `.env`:
 
 ```env
 VITE_API_BASE_URL=/api
 VITE_FINSIGHT_USER_ID=1
 ```
 
-> The backend expects a PostgreSQL database with a `finance` schema (tables: `users`, `accounts`, `categories`, `transactions`, `budgets`, `savings_goals`, `debts`, `recurring_transactions`, `audit_log`, plus related views). A schema file is not included yet.
+**Security:** Never commit `.env` files, database passwords, or private credentials to GitHub.
 
-### 3. Run
-
-Backend (port 5000):
+### Step 4: Build the Frontend
 
 ```bash
-cd backend
-npm run dev
+npm run build
 ```
 
-Frontend (port 3000), in a second terminal from the project root:
+### Step 5: Start the Application
 
 ```bash
-npm run dev
+npm start
 ```
 
-Open http://localhost:3000. Check the API at http://localhost:5000/api/health.
+The Express server serves the built frontend and API from the same origin.
+
+Open:
+
+```text
+http://localhost:5000
+```
 
 ---
 
-## 🗺 Roadmap
+## 8. API Endpoints
 
-- [x] Dashboard, accounts, transactions, budgets, savings, debts, recurring, analytics, audit log
-- [ ] Add a `schema.sql` with sample data
-- [ ] Finish and polish the remaining pages
-- [ ] Fix remaining create/update errors
-- [ ] Authentication and multi-user support
-- [ ] Automated tests
-- [ ] Production deployment hardening
+The backend exposes REST API endpoints under `/api`.
+
+| Module | Main Endpoint |
+|---|---|
+| Health | `/api/health` |
+| Metadata | `/api/meta` |
+| Users | `/api/users/:userId` |
+| Dashboard | `/api/dashboard/:userId` |
+| Transactions | `/api/transactions/:userId` |
+| Accounts | `/api/accounts/:userId` |
+| Categories | `/api/categories` |
+| Budgets | `/api/budgets/:userId` |
+| Savings | `/api/savings/:userId` |
+| Debts | `/api/debts/:userId` |
+| Recurring | `/api/recurring/:userId` |
+| Analytics | `/api/analytics/:userId` |
+| Audit Log | `/api/audit/:userId` |
+
+The API supports the appropriate GET, POST, PUT, and DELETE operations for its resources.
 
 ---
 
-## 📄 License
+## 9. Running Tests
 
-No license has been chosen yet.
+Backend integration tests:
+
+```bash
+npm test
+```
+
+Browser UI tests:
+
+```bash
+npm run test:ui
+```
+
+The project source documentation records a previous test run of 96 backend checks and 45 browser checks. These results should not be interpreted as a guarantee that the current deployment has passed those tests.
+
+---
+
+## 10. Deployment
+
+The deployment target for FinSight is **Vercel**.
+
+The intended deployment architecture is:
+
+- React + Vite frontend.
+- Express backend adapted for Vercel serverless execution.
+- Existing PostgreSQL database.
+- Environment variables configured securely through the hosting platform.
+
+The current local Express server configuration is not, by itself, a completed Vercel serverless deployment. Deployment configuration and production API verification are required.
+
+---
+
+## 11. Security Considerations
+
+- Store database credentials in environment variables.
+- Never expose private credentials in frontend code.
+- Never commit `.env` files.
+- Validate incoming API data.
+- Use parameterized PostgreSQL queries.
+- Restrict production database access appropriately.
+- Configure database SSL according to the provider's requirements.
+
+---
+
+## 12. Future Improvements
+
+- Complete Vercel full-stack deployment.
+- Strengthen production API security.
+- Improve financial reporting and export options.
+- Add more advanced financial insights.
+- Expand automated testing.
+- Improve mobile responsiveness and accessibility.
+
+---
+
+## 13. Author
+
+**Project:** FinSight v2.0  
+**Developer:** Pandrala Dharma Kovidh  
+**GitHub:** [pandraladharmakovid-cyber](https://github.com/pandraladharmakovid-cyber)
+
+---
+
+## License
+
+This project is distributed under the MIT License, as specified in the project configuration.
+
+---
+
+**FinSight — Understand Your Money. Control Your Future.**

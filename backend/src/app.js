@@ -1,3 +1,7 @@
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import express from 'express';
 import cors from 'cors';
 
@@ -17,7 +21,11 @@ import {
   getCategorySpending,
   createCategory,
   deleteCategory,
+  getUserById,
+  updateUser,
   queryOne,
+  normalizeAccountType,
+  ACCOUNT_TYPES,
 } from './db/queries.js';
 import asyncHandler from './utils/asyncHandler.js';
 import requestLogger from './middleware/requestLogger.js';
@@ -76,8 +84,17 @@ app.get(`${API_PREFIX}/categories`, asyncHandler(async (req, res) => {
 }));
 
 app.post(`${API_PREFIX}/categories`, asyncHandler(async (req, res) => {
-  const created = await createCategory(req.body);
-  res.status(201).json({ success: true, data: created });
+  const userId = Number(
+    req.body.userId ?? req.body.user_id ?? req.query.userId ?? 1,
+  );
+
+  const created = await createCategory(req.body, userId);
+
+  res.status(201).json({
+    success: true,
+    message: 'Category created successfully.',
+    data: created,
+  });
 }));
 
 app.put(`${API_PREFIX}/categories/:categoryId`, asyncHandler(async (req, res) => {
@@ -93,8 +110,70 @@ app.put(`${API_PREFIX}/categories/:categoryId`, asyncHandler(async (req, res) =>
 
 app.delete(`${API_PREFIX}/categories/:categoryId`, asyncHandler(async (req, res) => {
   const deleted = await deleteCategory(Number(req.params.categoryId));
-  res.json({ success: true, data: deleted });
+
+  if (!deleted) {
+    const error = new Error('Category not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  res.json({
+    success: true,
+    message: 'Category deleted successfully.',
+    data: deleted,
+  });
 }));
+
+/* ============================================================
+   USERS / PROFILE
+   ============================================================ */
+
+app.get(`${API_PREFIX}/users/:userId`, asyncHandler(async (req, res) => {
+  const user = await getUserById(Number(req.params.userId));
+
+  if (!user) {
+    const error = new Error('User not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  res.json({ success: true, data: user });
+}));
+
+app.put(`${API_PREFIX}/users/:userId`, asyncHandler(async (req, res) => {
+  const user = await updateUser(Number(req.params.userId), req.body);
+
+  if (!user) {
+    const error = new Error('User not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  res.json({
+    success: true,
+    message: 'Profile updated successfully.',
+    data: user,
+  });
+}));
+
+/* ============================================================
+   METADATA (drives UI dropdowns from the real database rules)
+   ============================================================ */
+
+app.get(`${API_PREFIX}/meta`, (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      accountTypes: ACCOUNT_TYPES,
+      categoryTypes: ['INCOME', 'EXPENSE'],
+      transactionTypes: ['INCOME', 'EXPENSE'],
+      frequencies: ['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'],
+      debtStatuses: ['ACTIVE', 'PAID', 'OVERDUE'],
+      goalStatuses: ['ACTIVE', 'COMPLETED', 'PAUSED'],
+      currency: 'INR',
+    },
+  });
+});
 
 app.use(`${API_PREFIX}/accounts`, accountRoutes);
 app.use(`${API_PREFIX}/budgets`, budgetRoutes);
@@ -105,6 +184,21 @@ app.use(`${API_PREFIX}/savings`, savingsRoutes);
 app.use(`${API_PREFIX}/recurring`, recurringRoutes);
 app.use(`${API_PREFIX}/analytics`, analyticsRoutes);
 app.use(`${API_PREFIX}/audit`, auditRoutes);
+
+/* ============================================================
+   STATIC FRONTEND (production build served by the same server)
+   ============================================================ */
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(__dirname, '../../dist');
+
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
 
 app.use(notFound);
 app.use(errorHandler);
