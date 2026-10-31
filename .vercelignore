@@ -1,0 +1,14 @@
+# Never upload local credentials or machine-specific build artifacts.
+.env
+.env.*
+backend/.env
+backend/.env.*
+**/.env
+**/.env.*
+!.env.example
+!backend/.env.example
+.vercel/
+node_modules/
+backend/node_modules/
+dist/
+screenshots/

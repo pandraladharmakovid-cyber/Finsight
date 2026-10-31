@@ -287,10 +287,11 @@ cd FinSight
 ### Step 2: Install Dependencies
 
 ```bash
-npm install
+npm ci
+npm ci --prefix backend
 ```
 
-The root installation also installs backend dependencies through the configured `postinstall` script.
+The frontend and backend have separate lockfiles and both need their dependencies installed.
 
 ### Step 3: Configure Environment Variables
 
@@ -305,7 +306,8 @@ DB_NAME=your_database_name
 DB_USER=your_database_username
 DB_PASSWORD=your_database_password
 
-DB_SCHEMA=finance
+# Set to true if your database provider requires TLS.
+DB_SSL=false
 ```
 
 Create the frontend `.env`:
@@ -365,10 +367,16 @@ The API supports the appropriate GET, POST, PUT, and DELETE operations for its r
 
 ## 9. Running Tests
 
-Backend integration tests:
+Backend integration tests (require a running API and a disposable database; the tests modify records):
 
 ```bash
 npm test
+```
+
+Vercel routing smoke tests (no database connection required):
+
+```bash
+npm run test:vercel
 ```
 
 Browser UI tests:
@@ -381,18 +389,29 @@ The project source documentation records a previous test run of 96 backend check
 
 ---
 
-## 10. Deployment
+## 10. Deployment to Vercel
 
-The deployment target for FinSight is **Vercel**.
+The root `vercel.json` builds the Vite frontend, installs the separate backend dependencies, routes `/api/*` to the Express serverless function, and sends frontend deep links to the SPA. Import this repository into Vercel with the **root directory** set to the repository root and the **Vite** framework preset. Deploy a branch that contains this configuration; importing the default branch alone will not include unmerged changes from another branch.
 
-The intended deployment architecture is:
+**Protect financial data before adding a database password:** this application does not implement user authentication or authorization. In the Vercel project, open **Settings → Deployment Protection**, enable **Vercel Authentication**, and select **All Deployments** (including production). Only give access to people who should be able to read and modify all of the database's financial records. Vercel's default Standard Protection does not protect the production domain.
 
-- React + Vite frontend.
-- Express backend adapted for Vercel serverless execution.
-- Existing PostgreSQL database.
-- Environment variables configured securely through the hosting platform.
+In **Settings → Environment Variables**, configure these server-side variables for the desired Production and/or Preview environments:
 
-The current local Express server configuration is not, by itself, a completed Vercel serverless deployment. Deployment configuration and production API verification are required.
+| Variable | Value |
+|---|---|
+| `DB_HOST` | PostgreSQL host supplied by the provider (hostname only, without `http://`) |
+| `DB_PORT` | PostgreSQL port supplied by the provider |
+| `DB_NAME` | Database name |
+| `DB_USER` | Database username |
+| `DB_PASSWORD` | Database password; enter it directly in Vercel, not in Git or chat |
+| `DB_SSL` | Set to `true` if the provider requires TLS; confirm the provider's settings |
+| `DB_MAX_CONNECTIONS` | Optional; a small value such as `2` helps limit connections per serverless instance |
+
+The existing `DB_SSL=true` setting encrypts the connection but does not verify the server certificate; use a trusted network or add certificate verification before relying on it for sensitive data. The database must already contain the `finance` schema, tables, views, and triggers described above; this repository does not currently include a schema migration or seed script.
+
+After changing environment variables, redeploy so the function receives them. Check `/api/health`: its `database` field should contain database information. Also open and refresh a frontend route such as `/dashboard`. A successful frontend build alone does not verify the database. Run the full integration tests only against a disposable database: they create, update, and delete records.
+
+For local development behind a path-prefixed proxy, set `VITE_BASE_PATH` when building (for example, `VITE_BASE_PATH=./ npm run build`). The default is `/` for Vercel.
 
 ---
 
@@ -410,8 +429,8 @@ The current local Express server configuration is not, by itself, a completed Ve
 
 ## 12. Future Improvements
 
-- Complete Vercel full-stack deployment.
-- Strengthen production API security.
+- Add application-level authentication and authorization.
+- Strengthen production API security and database TLS certificate verification.
 - Improve financial reporting and export options.
 - Add more advanced financial insights.
 - Expand automated testing.

@@ -5,8 +5,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
 
-  // Required for ByteXL URLs such as /proxy/5000/
-  base: './',
+  // Vercel serves the app at the domain root; an explicit base can still be
+  // supplied when building for a subpath such as a development proxy.
+  base: process.env.VITE_BASE_PATH || '/',
 
   server: {
     port: 3000,

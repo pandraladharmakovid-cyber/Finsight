@@ -1,7 +1,9 @@
 node_modules/
 dist/
+.vercel/
 .env
-backend/.env
+.env.*
+!.env.example
 *.log
 screenshots/
 *.bak-*
