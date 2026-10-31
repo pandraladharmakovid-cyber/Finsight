@@ -7,6 +7,16 @@
 
 const BASE = process.argv[2] || 'http://localhost:5000/api';
 const UID = 1;
+let sessionCookie = '';
+if (process.env.FINSIGHT_TEST_PASSWORD) {
+  const login = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-FinSight-Request': '1' },
+    body: JSON.stringify({ password: process.env.FINSIGHT_TEST_PASSWORD }),
+  });
+  if (!login.ok) throw new Error(`Test sign-in failed (${login.status}).`);
+  sessionCookie = login.headers.get('set-cookie')?.split(';')[0] || '';
+}
 
 let pass = 0;
 let fail = 0;
@@ -26,7 +36,11 @@ function ok(name, condition, detail = '') {
 async function call(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: {
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...(['GET', 'HEAD'].includes(method) ? {} : { 'X-FinSight-Request': '1' }),
+      ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
 

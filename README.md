@@ -287,10 +287,11 @@ cd FinSight
 ### Step 2: Install Dependencies
 
 ```bash
-npm install
+npm ci
+npm ci --prefix backend
 ```
 
-The root installation also installs backend dependencies through the configured `postinstall` script.
+The frontend and backend have separate lockfiles and both need their dependencies installed.
 
 ### Step 3: Configure Environment Variables
 
@@ -305,7 +306,12 @@ DB_NAME=your_database_name
 DB_USER=your_database_username
 DB_PASSWORD=your_database_password
 
-DB_SCHEMA=finance
+# Verify the database certificate (recommended for remote databases).
+DB_SSL=true
+
+# For local development only, optionally bypass workspace sign-in.
+# This flag is ignored in production and on Vercel.
+FINSIGHT_DISABLE_AUTH=true
 ```
 
 Create the frontend `.env`:
@@ -314,6 +320,10 @@ Create the frontend `.env`:
 VITE_API_BASE_URL=/api
 VITE_FINSIGHT_USER_ID=1
 ```
+
+For protected local sign-in instead of the development bypass, run
+`node tools/generate-workspace-credentials.mjs`, add the printed hash and session
+secret to `backend/.env`, and keep the generated workspace password private.
 
 **Security:** Never commit `.env` files, database passwords, or private credentials to GitHub.
 
@@ -365,10 +375,16 @@ The API supports the appropriate GET, POST, PUT, and DELETE operations for its r
 
 ## 9. Running Tests
 
-Backend integration tests:
+Backend integration tests (require a running API and a disposable database; the tests modify records):
 
 ```bash
 npm test
+```
+
+Vercel routing smoke tests (no database connection required):
+
+```bash
+npm run test:vercel
 ```
 
 Browser UI tests:
@@ -377,22 +393,40 @@ Browser UI tests:
 npm run test:ui
 ```
 
-The project source documentation records a previous test run of 96 backend checks and 45 browser checks. These results should not be interpreted as a guarantee that the current deployment has passed those tests.
+For protected test deployments, set `FINSIGHT_TEST_PASSWORD` in the test process so the integration and browser suites can sign in. The project source documentation records a previous test run of 96 backend checks and 45 browser checks. These results should not be interpreted as a guarantee that the current deployment has passed those tests.
 
 ---
 
-## 10. Deployment
+## 10. Deployment to Vercel
 
-The deployment target for FinSight is **Vercel**.
+The root `vercel.json` uses Vercel Services to build the Vite frontend and Express backend separately, routing `/api/*` to Express and other requests to the frontend. Import the repository with the root directory set to the repository root and the **Services** framework preset.
 
-The intended deployment architecture is:
+The application implements a **single-owner** password-protected workspace: the owner can read and modify all financial records, and it is not intended for separate multi-user accounts. Generate a high-entropy workspace password and server secrets with:
 
-- React + Vite frontend.
-- Express backend adapted for Vercel serverless execution.
-- Existing PostgreSQL database.
-- Environment variables configured securely through the hosting platform.
+```bash
+node tools/generate-workspace-credentials.mjs
+```
 
-The current local Express server configuration is not, by itself, a completed Vercel serverless deployment. Deployment configuration and production API verification are required.
+Keep the printed password private. Store the two printed server values as **sensitive** Vercel environment variables; never commit them. Rotate both the password hash and session secret if access needs to be revoked. Sessions last up to 12 hours; the per-instance sign-in limiter is best-effort and is not a globally shared rate limiter. Vercel Authentication for **All Deployments** provides an additional recommended protection layer.
+
+Configure these server-side variables for the desired Production and/or Preview environments:
+
+| Variable | Value |
+|---|---|
+| `FINSIGHT_PASSWORD_HASH` | Generated `scrypt:...` hash for the workspace password |
+| `FINSIGHT_SESSION_SECRET` | Generated signing key; at least 32 random bytes |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | PostgreSQL connection details from the provider; keep the password secret |
+| `DB_SSL` | Set to `true` for a TLS-enabled database. Server certificates are verified |
+| `DB_SSL_CA` | Optional PEM-encoded provider CA for a private certificate authority |
+| `DB_MAX_CONNECTIONS` | Optional; a small value such as `2` limits connections per serverless instance |
+| `VITE_API_BASE_URL` | `/api` (same-origin) |
+| `VITE_FINSIGHT_USER_ID` | The existing workspace user ID, normally `1` |
+
+**A database without TLS sends financial records, and potentially credentials, unencrypted over the network.** Use a TLS-enabled database for real financial information. The database must already contain the `finance` schema, tables, views, and triggers described above; this repository does not currently include a schema migration or seed script.
+
+After changing environment variables, redeploy. Sign in and check `/api/health`: its `database` field should contain database information. Also open and refresh a frontend route such as `/dashboard`. A successful frontend build alone does not verify the database. Run the full integration tests only against a disposable database: they create, update, and delete records.
+
+For local development behind a path-prefixed proxy, set `VITE_BASE_PATH` when building (for example, `VITE_BASE_PATH=./ npm run build`). The default is `/` for Vercel.
 
 ---
 
@@ -404,14 +438,16 @@ The current local Express server configuration is not, by itself, a completed Ve
 - Validate incoming API data.
 - Use parameterized PostgreSQL queries.
 - Restrict production database access appropriately.
-- Configure database SSL according to the provider's requirements.
+- Prefer verified database TLS; never rely on unencrypted transport for real financial information.
+- The workspace password grants access to all records; it is not multi-user authorization.
+- For stronger access control, enable Vercel Authentication for All Deployments.
 
 ---
 
 ## 12. Future Improvements
 
-- Complete Vercel full-stack deployment.
-- Strengthen production API security.
+- Add per-user authentication and authorization.
+- Add a shared, distributed sign-in rate limiter and revocable sessions.
 - Improve financial reporting and export options.
 - Add more advanced financial insights.
 - Expand automated testing.

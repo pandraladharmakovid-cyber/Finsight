@@ -16,6 +16,7 @@ import {
   FolderTree,
   History,
   LayoutDashboard,
+  LogOut,
   Menu,
   PiggyBank,
   Plus,
@@ -394,7 +395,7 @@ function Sidebar({ open, onNavigate, health }) {
    SHELL
    ========================================================================== */
 
-export default function Shell({ children }) {
+export default function Shell({ children, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -428,9 +429,10 @@ export default function Shell({ children }) {
 
     const check = async () => {
       try {
-        const response = await fetch('/api/health');
+        const response = await fetch('/api/health', { cache: 'no-store' });
+        const result = response.ok ? await response.json() : null;
         if (!alive) return;
-        setHealth(response.ok ? 'up' : 'down');
+        setHealth(response.ok && result?.database ? 'up' : 'down');
       } catch {
         if (alive) setHealth('down');
       }
@@ -507,6 +509,16 @@ export default function Shell({ children }) {
                 aria-label="View audit log"
               >
                 <Bell size={17} />
+              </button>
+
+              <button
+                type="button"
+                className="fs-btn fs-btn-ghost fs-btn-icon"
+                onClick={onLogout}
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <LogOut size={17} />
               </button>
 
               <button

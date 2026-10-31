@@ -11,7 +11,12 @@ export const pool = new Pool({
   password: env.db.password,
 
   ssl: env.db.ssl
-    ? { rejectUnauthorized: false }
+    ? {
+        // When TLS is enabled, verify the server identity instead of silently
+        // accepting untrusted certificates. A provider CA may be supplied.
+        rejectUnauthorized: true,
+        ...(process.env.DB_SSL_CA ? { ca: process.env.DB_SSL_CA } : {}),
+      }
     : undefined,
 
   max: env.db.maxConnections,

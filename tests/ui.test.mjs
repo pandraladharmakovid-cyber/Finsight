@@ -63,6 +63,15 @@ page.on('pageerror', (error) => pageErrors.push(error.message));
 console.log('\n\u001b[36m1. Application shell & dashboard\u001b[0m');
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
+const loginInput = page.locator('#finsight-password');
+if (await loginInput.isVisible()) {
+  if (!process.env.FINSIGHT_TEST_PASSWORD) {
+    throw new Error('Set FINSIGHT_TEST_PASSWORD to sign in before running browser tests.');
+  }
+  await loginInput.fill(process.env.FINSIGHT_TEST_PASSWORD);
+  await page.getByRole('button', { name: /open finsight/i }).click();
+  await page.locator('.fs-topbar').waitFor();
+}
 await page.waitForTimeout(1200);
 
 ok('app redirects to /dashboard', page.url().includes('/dashboard'), page.url());
