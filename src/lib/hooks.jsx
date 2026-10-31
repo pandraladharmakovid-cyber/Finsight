@@ -80,43 +80,48 @@ export function useResource(loader, deps = [], { immediate = true } = {}) {
 export function useCountUp(target, duration = 900) {
   const [value, setValue] = useState(0);
   const frame = useRef(null);
-  const from = useRef(0);
+  const currentValue = useRef(0);
 
   useEffect(() => {
     const end = Number(target) || 0;
-    const start = from.current;
+    const start = currentValue.current;
     const delta = end - start;
 
-    if (Math.abs(delta) < 0.01) {
+    if (Math.abs(delta) < 0.01 || duration <= 0) {
       setValue(end);
-      from.current = end;
+      currentValue.current = end;
       return undefined;
     }
 
-    const startedAt = performance.now();
+    // Use the first frame's clock as the baseline. A frame timestamp can be
+    // earlier than performance.now(), so mixing them can briefly show wildly
+    // incorrect financial totals.
+    let startedAt = null;
 
     const tick = (now) => {
-      const progress = Math.min((now - startedAt) / duration, 1);
+      if (startedAt === null) startedAt = now;
+      const progress = Math.max(0, Math.min((now - startedAt) / duration, 1));
       // easeOutExpo for a decisive, springy settle
       const eased =
         progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+      const next = start + delta * eased;
 
-      setValue(start + delta * eased);
+      currentValue.current = next;
+      setValue(next);
 
       if (progress < 1) {
         frame.current = requestAnimationFrame(tick);
       } else {
-        from.current = end;
+        frame.current = null;
       }
     };
 
     frame.current = requestAnimationFrame(tick);
 
     return () => {
-      if (frame.current) cancelAnimationFrame(frame.current);
-      from.current = value;
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target, duration]);
 
   return value;
