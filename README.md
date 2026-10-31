@@ -393,7 +393,7 @@ Browser UI tests:
 npm run test:ui
 ```
 
-The project source documentation records a previous test run of 96 backend checks and 45 browser checks. These results should not be interpreted as a guarantee that the current deployment has passed those tests.
+For protected test deployments, set `FINSIGHT_TEST_PASSWORD` in the test process so the integration and browser suites can sign in. The project source documentation records a previous test run of 96 backend checks and 45 browser checks. These results should not be interpreted as a guarantee that the current deployment has passed those tests.
 
 ---
 
