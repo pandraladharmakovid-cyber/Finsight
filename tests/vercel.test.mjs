@@ -22,7 +22,7 @@ Object.assign(process.env, {
   FINSIGHT_SESSION_SECRET: 'test-session-secret-with-at-least-forty-three-characters',
 });
 
-const { default: handler, restoreApiUrl } = await import('../api/index.js');
+const { default: app } = await import('../backend/src/app.js');
 const { pool } = await import('../backend/src/config/database.js');
 const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url)));
 
@@ -31,7 +31,7 @@ let baseUrl;
 let sessionCookie;
 
 before(async () => {
-  server = createServer(handler);
+  server = createServer(app);
   await new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
@@ -55,48 +55,25 @@ after(async () => {
   await pool.end();
 });
 
-test('Vercel config routes API requests before frontend deep links', () => {
-  const [apiRewrite, spaRewrite] = config.rewrites;
-  const apiPattern = new RegExp(`^${apiRewrite.source}$`);
-  const spaPattern = new RegExp(`^${spaRewrite.source}$`);
-
-  assert.match(apiRewrite.destination, /^\/api\?__finsight_path=/);
-  assert.equal(apiPattern.test('/api/transactions/1/summary'), true);
-  assert.equal(spaPattern.test('/api/transactions/1/summary'), false);
-  assert.equal(spaPattern.test('/api'), false);
-  assert.equal(spaPattern.test('/dashboard/'), true);
-  assert.equal(spaRewrite.destination, '/index.html');
+test('Vercel routes API traffic to the backend and other paths to the frontend', () => {
+  assert.equal(config.services.frontend.framework, 'vite');
+  assert.equal(config.services.backend.framework, 'express');
+  assert.equal(config.services.backend.root, 'backend');
+  assert.equal(config.services.backend.entrypoint, 'src/app.js');
+  const [apiRewrite, frontendRewrite] = config.rewrites;
+  assert.equal(new RegExp(`^${apiRewrite.source}$`).test('/api/transactions/1/summary'), true);
+  assert.deepEqual(apiRewrite.destination, { service: 'backend' });
+  assert.deepEqual(frontendRewrite.destination, { service: 'frontend' });
 });
 
-test('local environment files are excluded from function bundles', async () => {
-  const excluded = config.functions['api/index.js'].excludeFiles;
-  assert.match(excluded, /(?:\{|,)\.env(?:,|\})/);
-  assert.match(excluded, /(?:\{|,)backend\/\.env(?:,|\})/);
-  assert.match(excluded, /backend\/\.env\.\*/);
-  assert.match(excluded, /\*\*\/\.env/);
+test('local credentials are excluded from deployment uploads', async () => {
   const ignoredUploads = await readFile(new URL('../.vercelignore', import.meta.url), 'utf8');
   assert.match(ignoredUploads, /^backend\/\.env$/m);
   assert.match(ignoredUploads, /^\.env\.\*$/m);
 });
 
-test('rewrite recovery retains nested paths and original query parameters', () => {
-  assert.equal(
-    restoreApiUrl('/api?__finsight_path=%2Ftransactions%2F1%2Fsummary&from=2026-01-01&tag=a&tag=b'),
-    '/api/transactions/1/summary?from=2026-01-01&tag=a&tag=b',
-  );
-  assert.equal(restoreApiUrl('/api/index?__finsight_path=/meta'), '/api/meta');
-  assert.equal(restoreApiUrl('/api/index.js?__finsight_path=%2Fmeta'), '/api/meta');
-  assert.equal(restoreApiUrl('/api?__finsight_path=%2F&sort=desc'), '/api/?sort=desc');
-});
-
-test('original API URLs do not get rewritten a second time', () => {
-  assert.equal(restoreApiUrl('/api/meta?x=1'), '/api/meta?x=1');
-  assert.equal(restoreApiUrl('/api/meta?__finsight_path=/other'), '/api/meta?__finsight_path=/other');
-  assert.equal(restoreApiUrl('/api?x=1'), '/api?x=1');
-});
-
-test('the exported function serves metadata for original and rewritten paths', async () => {
-  for (const path of ['/api/meta', '/api?__finsight_path=%2Fmeta']) {
+test('the Express service serves metadata and preserves query strings', async () => {
+  for (const path of ['/api/meta', '/api/meta?source=vercel']) {
     const response = await fetch(baseUrl + path, { headers: { cookie: sessionCookie } });
     const body = await response.json();
     assert.equal(response.status, 200);
@@ -105,14 +82,14 @@ test('the exported function serves metadata for original and rewritten paths', a
   }
 });
 
-test('nested routes and POST bodies reach Express after rewrite', async () => {
-  const nested = await fetch(`${baseUrl}/api?__finsight_path=%2Ftransactions%2Fnot-an-id%2F123%2Frequired`, {
+test('nested routes and POST bodies reach Express', async () => {
+  const nested = await fetch(`${baseUrl}/api/transactions/not-an-id/123/required`, {
     headers: { cookie: sessionCookie },
   });
   assert.equal(nested.status, 400);
   assert.match((await nested.json()).message, /userId must be a positive integer/);
 
-  const post = await fetch(`${baseUrl}/api?__finsight_path=%2Ftransactions`, {
+  const post = await fetch(`${baseUrl}/api/transactions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-finsight-request': '1', cookie: sessionCookie },
     body: JSON.stringify({ userId: 'not-an-id', amount: 5 }),
@@ -122,7 +99,7 @@ test('nested routes and POST bodies reach Express after rewrite', async () => {
 });
 
 test('unknown API routes return JSON 404s, not the SPA', async () => {
-  const response = await fetch(`${baseUrl}/api?__finsight_path=%2Fmissing%2Froute&filter=hello`, {
+  const response = await fetch(`${baseUrl}/api/missing/route?filter=hello`, {
     headers: { cookie: sessionCookie },
   });
   assert.equal(response.status, 404);
@@ -131,7 +108,7 @@ test('unknown API routes return JSON 404s, not the SPA', async () => {
 });
 
 test('health reports an unavailable database without contacting a real provider', async () => {
-  const response = await fetch(`${baseUrl}/api?__finsight_path=%2Fhealth`, {
+  const response = await fetch(`${baseUrl}/api/health`, {
     headers: { cookie: sessionCookie },
   });
   const body = await response.json();
@@ -146,7 +123,7 @@ test('every financial endpoint and the database health check require sign-in', a
     '/api/categories',
     '/api/health',
     '/api/meta',
-    '/api?__finsight_path=%2Fdashboard%2F1',
+    '/api/dashboard/1',
   ]) {
     const response = await fetch(baseUrl + path);
     assert.equal(response.status, 401, path);

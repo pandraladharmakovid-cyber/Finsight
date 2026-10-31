@@ -88,19 +88,19 @@ export default function App() {
             <Shell onLogout={onLogout}>
               <Suspense fallback={<PageLoader />}>
                 <Routes>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/transactions" element={<Transactions />} />
-              <Route path="/accounts" element={<Accounts />} />
-              <Route path="/categories" element={<Categories />} />
-              <Route path="/budgets" element={<Budgets />} />
-              <Route path="/savings" element={<Savings />} />
-              <Route path="/debts" element={<Debts />} />
-              <Route path="/recurring" element={<Recurring />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/audit" element={<AuditLog />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/transactions" element={<Transactions />} />
+                  <Route path="/accounts" element={<Accounts />} />
+                  <Route path="/categories" element={<Categories />} />
+                  <Route path="/budgets" element={<Budgets />} />
+                  <Route path="/savings" element={<Savings />} />
+                  <Route path="/debts" element={<Debts />} />
+                  <Route path="/recurring" element={<Recurring />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/audit" element={<AuditLog />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
               </Suspense>
             </Shell>

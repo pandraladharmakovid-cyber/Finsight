@@ -1,22 +1,28 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "installCommand": "npm ci --no-audit --no-fund && npm ci --prefix backend --omit=dev --no-audit --no-fund",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "functions": {
-    "api/index.js": {
-      "excludeFiles": "{.env,.env.*,backend/.env,backend/.env.*,**/.env,**/.env.*,dist/**}"
+  "services": {
+    "frontend": {
+      "root": ".",
+      "framework": "vite"
+    },
+    "backend": {
+      "root": "backend",
+      "framework": "express",
+      "entrypoint": "src/app.js"
     }
   },
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api?__finsight_path=/$1"
+      "destination": {
+        "service": "backend"
+      }
     },
     {
-      "source": "/((?!api(?:/|$)).*)",
-      "destination": "/index.html"
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
     }
   ]
 }

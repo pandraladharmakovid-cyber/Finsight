@@ -306,8 +306,12 @@ DB_NAME=your_database_name
 DB_USER=your_database_username
 DB_PASSWORD=your_database_password
 
-# Set to true if your database provider requires TLS.
-DB_SSL=false
+# Verify the database certificate (recommended for remote databases).
+DB_SSL=true
+
+# For local development only, optionally bypass workspace sign-in.
+# This flag is ignored in production and on Vercel.
+FINSIGHT_DISABLE_AUTH=true
 ```
 
 Create the frontend `.env`:
@@ -316,6 +320,10 @@ Create the frontend `.env`:
 VITE_API_BASE_URL=/api
 VITE_FINSIGHT_USER_ID=1
 ```
+
+For protected local sign-in instead of the development bypass, run
+`node tools/generate-workspace-credentials.mjs`, add the printed hash and session
+secret to `backend/.env`, and keep the generated workspace password private.
 
 **Security:** Never commit `.env` files, database passwords, or private credentials to GitHub.
 
@@ -391,25 +399,32 @@ The project source documentation records a previous test run of 96 backend check
 
 ## 10. Deployment to Vercel
 
-The root `vercel.json` builds the Vite frontend, installs the separate backend dependencies, routes `/api/*` to the Express serverless function, and sends frontend deep links to the SPA. Import this repository into Vercel with the **root directory** set to the repository root and the **Vite** framework preset. Deploy a branch that contains this configuration; importing the default branch alone will not include unmerged changes from another branch.
+The root `vercel.json` uses Vercel Services to build the Vite frontend and Express backend separately, routing `/api/*` to Express and other requests to the frontend. Import the repository with the root directory set to the repository root and the **Services** framework preset.
 
-**Protect financial data before adding a database password:** this application does not implement user authentication or authorization. In the Vercel project, open **Settings → Deployment Protection**, enable **Vercel Authentication**, and select **All Deployments** (including production). Only give access to people who should be able to read and modify all of the database's financial records. Vercel's default Standard Protection does not protect the production domain.
+The application implements a **single-owner** password-protected workspace: the owner can read and modify all financial records, and it is not intended for separate multi-user accounts. Generate a high-entropy workspace password and server secrets with:
 
-In **Settings → Environment Variables**, configure these server-side variables for the desired Production and/or Preview environments:
+```bash
+node tools/generate-workspace-credentials.mjs
+```
+
+Keep the printed password private. Store the two printed server values as **sensitive** Vercel environment variables; never commit them. Rotate both the password hash and session secret if access needs to be revoked. Sessions last up to 12 hours; the per-instance sign-in limiter is best-effort and is not a globally shared rate limiter. Vercel Authentication for **All Deployments** provides an additional recommended protection layer.
+
+Configure these server-side variables for the desired Production and/or Preview environments:
 
 | Variable | Value |
 |---|---|
-| `DB_HOST` | PostgreSQL host supplied by the provider (hostname only, without `http://`) |
-| `DB_PORT` | PostgreSQL port supplied by the provider |
-| `DB_NAME` | Database name |
-| `DB_USER` | Database username |
-| `DB_PASSWORD` | Database password; enter it directly in Vercel, not in Git or chat |
-| `DB_SSL` | Set to `true` if the provider requires TLS; confirm the provider's settings |
-| `DB_MAX_CONNECTIONS` | Optional; a small value such as `2` helps limit connections per serverless instance |
+| `FINSIGHT_PASSWORD_HASH` | Generated `scrypt:...` hash for the workspace password |
+| `FINSIGHT_SESSION_SECRET` | Generated signing key; at least 32 random bytes |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | PostgreSQL connection details from the provider; keep the password secret |
+| `DB_SSL` | Set to `true` for a TLS-enabled database. Server certificates are verified |
+| `DB_SSL_CA` | Optional PEM-encoded provider CA for a private certificate authority |
+| `DB_MAX_CONNECTIONS` | Optional; a small value such as `2` limits connections per serverless instance |
+| `VITE_API_BASE_URL` | `/api` (same-origin) |
+| `VITE_FINSIGHT_USER_ID` | The existing workspace user ID, normally `1` |
 
-The existing `DB_SSL=true` setting encrypts the connection but does not verify the server certificate; use a trusted network or add certificate verification before relying on it for sensitive data. The database must already contain the `finance` schema, tables, views, and triggers described above; this repository does not currently include a schema migration or seed script.
+**A database without TLS sends financial records, and potentially credentials, unencrypted over the network.** Use a TLS-enabled database for real financial information. The database must already contain the `finance` schema, tables, views, and triggers described above; this repository does not currently include a schema migration or seed script.
 
-After changing environment variables, redeploy so the function receives them. Check `/api/health`: its `database` field should contain database information. Also open and refresh a frontend route such as `/dashboard`. A successful frontend build alone does not verify the database. Run the full integration tests only against a disposable database: they create, update, and delete records.
+After changing environment variables, redeploy. Sign in and check `/api/health`: its `database` field should contain database information. Also open and refresh a frontend route such as `/dashboard`. A successful frontend build alone does not verify the database. Run the full integration tests only against a disposable database: they create, update, and delete records.
 
 For local development behind a path-prefixed proxy, set `VITE_BASE_PATH` when building (for example, `VITE_BASE_PATH=./ npm run build`). The default is `/` for Vercel.
 
@@ -423,14 +438,16 @@ For local development behind a path-prefixed proxy, set `VITE_BASE_PATH` when bu
 - Validate incoming API data.
 - Use parameterized PostgreSQL queries.
 - Restrict production database access appropriately.
-- Configure database SSL according to the provider's requirements.
+- Prefer verified database TLS; never rely on unencrypted transport for real financial information.
+- The workspace password grants access to all records; it is not multi-user authorization.
+- For stronger access control, enable Vercel Authentication for All Deployments.
 
 ---
 
 ## 12. Future Improvements
 
-- Add application-level authentication and authorization.
-- Strengthen production API security and database TLS certificate verification.
+- Add per-user authentication and authorization.
+- Add a shared, distributed sign-in rate limiter and revocable sessions.
 - Improve financial reporting and export options.
 - Add more advanced financial insights.
 - Expand automated testing.
