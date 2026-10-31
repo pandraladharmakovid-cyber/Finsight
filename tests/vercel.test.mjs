@@ -57,6 +57,11 @@ after(async () => {
 
 test('Vercel routes API traffic to the backend and other paths to the frontend', () => {
   assert.equal(config.services.frontend.framework, 'vite');
+  // Existing assets are served by the frontend service; unknown browser paths
+  // fall back to the SPA so refreshing /dashboard or /accounts does not 404.
+  assert.deepEqual(config.services.frontend.rewrites, [
+    { source: '/(.*)', destination: '/index.html' },
+  ]);
   assert.equal(config.services.backend.framework, 'express');
   assert.equal(config.services.backend.root, 'backend');
   assert.equal(config.services.backend.entrypoint, 'src/app.js');
