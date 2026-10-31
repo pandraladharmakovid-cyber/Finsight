@@ -2383,3 +2383,47 @@ svg {
   white-space: nowrap;
   border: 0;
 }
+
+/* Single-owner sign-in */
+.fs-auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  position: relative;
+  padding: 28px 18px;
+  background: #060711;
+}
+
+.fs-auth-aura {
+  position: absolute;
+  width: min(60vw, 620px);
+  height: min(60vw, 620px);
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(70px);
+  opacity: 0.2;
+}
+
+.fs-auth-aura-violet { background: #7c5cff; left: -12%; top: -20%; }
+.fs-auth-aura-cyan { background: #22d3ee; right: -16%; bottom: -30%; opacity: 0.13; }
+
+.fs-auth-card {
+  width: 100%;
+  max-width: 430px;
+  padding: 36px;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 35px 100px rgba(0,0,0,0.45);
+}
+
+.fs-auth-brand { display: flex; align-items: center; gap: 10px; font-size: 13px; letter-spacing: 0.14em; font-weight: 800; }
+.fs-auth-brand > span:last-child > span { color: var(--violet-soft); }
+.fs-auth-brand-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; background: var(--grad-brand); color: #080917; }
+.fs-auth-icon { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 16px; color: var(--violet-soft); background: rgba(124,92,255,0.12); border: 1px solid rgba(124,92,255,0.2); margin: 36px 0 20px; }
+.fs-auth-card h1 { font-size: clamp(27px, 6vw, 33px); letter-spacing: -0.04em; margin: 8px 0 7px; }
+.fs-auth-copy { color: var(--text-3); line-height: 1.65; font-size: 13px; margin-bottom: 28px; }
+.fs-auth-card form { display: grid; gap: 18px; }
+.fs-auth-error { color: var(--rose); font-size: 13px; line-height: 1.5; margin: 0; }
+.fs-auth-foot { display: flex; align-items: center; gap: 7px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--glass-stroke); color: var(--text-4); font-size: 11.5px; }
+@media (max-width: 480px) { .fs-auth-card { padding: 26px; } }

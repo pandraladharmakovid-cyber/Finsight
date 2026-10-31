@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import express from 'express';
-import cors from 'cors';
 
 import accountRoutes from './routes/accountRoutes.js';
 import budgetRoutes from './routes/budgetRoutes.js';
@@ -29,16 +28,32 @@ import {
 } from './db/queries.js';
 import asyncHandler from './utils/asyncHandler.js';
 import requestLogger from './middleware/requestLogger.js';
+import { login, logout, requireAuthentication, requireSameOriginRequest, sessionStatus } from './middleware/auth.js';
 import notFound from './middleware/notFound.js';
 import errorHandler from './middleware/errorHandler.js';
 
 const app = express();
 
 app.disable('x-powered-by');
-app.use(cors({ origin: true, credentials: true }));
+// The browser and API share an origin. Do not reflect arbitrary CORS origins:
+// that would allow another site to read the owner's financial data.
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(requestLogger);
+
+// Only an anonymous liveness check is exposed outside the API. All database
+// details and financial endpoints require a signed, HttpOnly session.
+app.get('/health', (_req, res) => res.json({ success: true, status: 'online' }));
+const API_PREFIX = '/api';
+app.use(API_PREFIX, (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+app.use(API_PREFIX, requireSameOriginRequest);
+app.get(`${API_PREFIX}/auth/session`, sessionStatus);
+app.post(`${API_PREFIX}/auth/login`, login);
+app.post(`${API_PREFIX}/auth/logout`, logout);
+app.use(API_PREFIX, requireAuthentication);
 
 const healthHandler = asyncHandler(async (_req, res) => {
   let dbInfo = null;
@@ -57,10 +72,7 @@ const healthHandler = asyncHandler(async (_req, res) => {
   });
 });
 
-app.get('/health', healthHandler);
-app.get('/api/health', healthHandler);
-
-const API_PREFIX = '/api';
+app.get(`${API_PREFIX}/health`, healthHandler);
 
 // Categories endpoints (merges finance.categories with category_spending view)
 app.get(`${API_PREFIX}/categories`, asyncHandler(async (req, res) => {
