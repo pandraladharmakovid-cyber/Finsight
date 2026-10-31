@@ -13,7 +13,8 @@
     "test": "node tests/integration.test.mjs",
     "test:api": "node tests/integration.test.mjs",
     "test:ui": "node tests/ui.test.mjs",
-    "test:vercel": "node --test tests/vercel.test.mjs"
+    "test:vercel": "node --test tests/vercel.test.mjs",
+    "test:animation": "node --test tests/animation.test.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
